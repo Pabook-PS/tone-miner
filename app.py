@@ -646,7 +646,7 @@ else:
 
         st.write("---")
         
-        st.subheader("🎒 El Baúl de Prácticas (Historial)")
+        st.subheader("🎒 Historial de prácticas")
         corregidas = obtener_pruebas("Corregido")
         
         if not corregidas:
