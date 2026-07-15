@@ -524,7 +524,7 @@ else:
         st.subheader("📝 Pruebas pendientes de corregir")
         respondidas = obtener_pruebas("Respondido")
         if not respondidas:
-            st.info("No hay respuestas nuevas de tu amigo por corregir.")
+            st.info("No hay respuestas nuevas del Minero por corregir.")
         else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
