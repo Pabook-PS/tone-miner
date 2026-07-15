@@ -135,6 +135,7 @@ def actualizar_password(rol, nueva_pass):
     conexion.close()
     subir_db_a_github()
 
+# ¡CORREGIDA!: Ahora añade la cláusula WHERE estado = ? correctamente si se filtra
 def obtener_pruebas(estado=None):
     conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
@@ -143,6 +144,7 @@ def obtener_pruebas(estado=None):
                       estado, bytes_audio, foto_respuesta_b, foto_correccion_a 
                FROM pruebas"""
     if estado:
+        query += " WHERE estado = ?"
         cursor.execute(query, (estado,))
     else:
         cursor.execute(query)
