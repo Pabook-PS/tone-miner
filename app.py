@@ -67,7 +67,7 @@ def inicializar_base_de_datos():
 
 inicializar_base_de_datos()
 
-# --- 2. FUNCIONES DE BASE DE DATOS (NUBE CON TEXT()) ---
+# --- 2. FUNCIONES DE BASE DE DATOS (NUBE) ---
 
 def obtener_password(rol):
     with conexion_db.session as session:
@@ -291,11 +291,11 @@ else:
 
         with pest_buzon:
             st.subheader("📬 Mensajes recibidos")
-            mensajes_recibidos = obtener_mensajes_admin()
-            if not mensajes_recibidos:
+            messages_recibidos = obtener_mensajes_admin()
+            if not messages_recibidos:
                 st.info("El buzón está vacío.")
             else:
-                for m in mensajes_recibidos:
+                for m in messages_recibidos:
                     id_m, remitente, mensaje, fecha = m
                     with st.container():
                         st.markdown(f"**De:** `{remitente}` | **Fecha:** {fecha}")
