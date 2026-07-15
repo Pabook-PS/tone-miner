@@ -276,7 +276,7 @@ def obtener_estadisticas_globales():
 
 
 # --- 3. INTERFAZ GRÁFICA (Streamlit) ---
-st.title("⛏️ Tone Miner")
+st.title("⛏️ Tone Miner ⛏️")
 
 if "rol" not in st.session_state:
     st.session_state["rol"] = None
@@ -289,12 +289,12 @@ if "mensaje_toast" in st.session_state:
 # --- PANTALLA DE LOGIN ---
 if st.session_state["rol"] is None:
     st.write("### 🔑 Identifícate para entrar a la mina")
-    rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Amigo A (Creador)", "Amigo B (Minero)", "Administrador"])
+    rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Creador", "Minero", "Administrador"])
     
     if rol_elegido != "Selecciona una opción":
         password = st.text_input("Introduce tu contraseña de acceso:", type="password")
         if st.button("Entrar"):
-            rol_db = "Creador" if rol_elegido == "Amigo A (Creador)" else "Minero" if rol_elegido == "Amigo B (Minero)" else "Admin"
+            rol_db = "Creador" if rol_elegido == "Creador" else "Minero" if rol_elegido == "Minero" else "Admin"
             if password == obtener_password(rol_db):
                 st.session_state["rol"] = rol_db
                 st.session_state["mensaje_toast"] = f"¡Acceso concedido como {rol_db}!"
@@ -463,12 +463,13 @@ else:
                 st.session_state["mensaje_toast"] = "¡Base de datos reseteada!"
                 st.rerun()
 
-    # ================= VISTA CREADOR (AMIGO A) =================
+    # ================= VISTA CREADOR (Guillermo) =================
     elif st.session_state["rol"] == "Creador":
-        st.header("👑 Panel del Creador (Amigo A)")
+        st.header("👑 Panel del Creador")
         
-        st.subheader("📤 Subir nueva prueba auditiva")
-        nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):", placeholder="Ej: Progresión en Re Menor, Blues...")
+        st.subheader("📤 Subir nueva prueba")
+        nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):"#, placeholder="Ej: Progresión en Re Menor, Blues..."
+                                                   )
         st.caption("ℹ️ *Si dejas este campo vacío, la prueba se nombrará automáticamente con la fecha de hoy.*")
         
         archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav)", type=["mp3", "wav"])
@@ -530,7 +531,7 @@ else:
             
             id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, bytes_audio_c, foto_b_c, _ = opciones_corregir[seleccion_corregir]
             
-            st.warning(f"Justificación de tu amigo: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
+            st.warning(f"Justificación del Minero: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
             if foto_b_c:
                 st.write("📷 **Foto-respuesta adjunta por el Minero:**")
@@ -540,8 +541,8 @@ else:
             st.audio(bytes_audio_c, format="audio/mp3")
             
             st.write("### 📝 Califica la prueba")
-            foto_creador = st.file_uploader("Sube una foto con la solución / partitura (Opcional):", type=["png", "jpg", "jpeg"])
-            feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! El tercer acorde era menor...")
+            foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"])
+            feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! Pero hay que picar más piedra...")
             puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=10, value=10)
             
             if st.button("Enviar Corrección"):
@@ -553,9 +554,9 @@ else:
                 else:
                     st.error("Por favor, escribe una justificación o sube una fotografía para poder enviar la corrección.")
 
-    # ================= VISTA MINERO (AMIGO B) =================
+    # ================= VISTA MINERO (Óscar) =================
     elif st.session_state["rol"] == "Minero":
-        st.header("⛏️ Panel del Minero (Amigo B)")
+        st.header("⛏️ Panel del Minero")
         
         _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales()
         col1, col2, col3 = st.columns(3)
@@ -608,7 +609,7 @@ else:
                     }};
                 </script>
                 """
-                st.components.v1.html(reproductor_html, height=140)
+                st.components.v1.html(reproductor_html, height=100)
                 
                 if st.button("Terminar audio ⏹️"):
                     st.session_state[llave] = False
@@ -630,7 +631,7 @@ else:
             
             st.write("### 📝 Envía tu respuesta")
             foto_respuesta = st.file_uploader("Sube una foto de tu cifrado (Opcional):", type=["png", "jpg", "jpeg"])
-            respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: I - V - vi - IV. El tercer acorde tiene tensión...")
+            respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: El tercer acorde tiene tensión...")
             
             if st.button("Enviar respuesta"):
                 if respuesta_usuario.strip() or foto_respuesta is not None:
@@ -654,11 +655,11 @@ else:
             for c in corregidas:
                 id_cor, _, nom_cor, _, _, resp_b, corr_a, punt_cor, _, aud_cor, foto_b, foto_a = c
                 with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/10"):
-                    st.write(f"**Tu respuesta (Justificación):** {resp_b if resp_b else '*Sin texto*'}")
+                    st.write(f"**Tu respuesta:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
                         st.image(foto_b, caption="Tu foto-respuesta enviada", use_container_width=True)
                     st.write("---")
-                    st.info(f"**Corrección (Justificación):** {corr_a if corr_a else '*Sin texto*'}")
+                    st.info(f"**Corrección:** {corr_a if corr_a else '*Sin texto*'}")
                     if foto_a:
-                        st.image(foto_a, caption="Solución visual de tu amigo", use_container_width=True)
+                        st.image(foto_a, caption="Solución visual del Creador", use_container_width=True)
                     st.audio(aud_cor, format="audio/mp3")
