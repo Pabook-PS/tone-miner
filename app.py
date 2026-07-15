@@ -1,222 +1,182 @@
-import sqlite3
 import streamlit as st
 import datetime
 import base64
 
-# --- 1. INICIALIZAR LA BASE DE DATOS Y TABLAS ---
+# --- 1. CONEXIÓN Y CREACIÓN DE TABLAS EN NUBE ---
+# Usamos st.connection para conectarnos de forma segura a PostgreSQL (Supabase)
+try:
+    conexion_db = st.connection("postgresql", type="sql")
+except Exception as e:
+    st.error("No se pudo conectar a la base de datos en la nube. Revisa los Secretos en Streamlit Cloud.")
+    st.stop()
+
 def inicializar_base_de_datos():
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS pruebas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre_archivo TEXT,
-            bytes_audio BLOB,
-            intentos_restantes INTEGER,
-            respuesta_b TEXT,
-            correccion_a TEXT,
-            puntuacion INTEGER,
-            estado TEXT
-        )
-    """)
-    
-    # Asegurar que todas las columnas necesarias existan (incluyendo las nuevas para fotos)
-    columnas_nuevas = [
-        ("puntuacion", "INTEGER"),
-        ("nombre_personalizado", "TEXT"),
-        ("intentos_maximos", "INTEGER"),
-        ("foto_respuesta_b", "BLOB"),      # Foto subida por el Minero como respuesta
-        ("foto_correccion_a", "BLOB")       # Foto subida por el Creador como corrección
-    ]
-    for col, tipo in columnas_nuevas:
-        try:
-            cursor.execute(f"SELECT {col} FROM pruebas LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute(f"ALTER TABLE pruebas ADD COLUMN {col} {tipo}")
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            rol TEXT PRIMARY KEY,
-            password TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS anuncios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            mensaje TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS mensajes_admin (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            remitente TEXT,
-            mensaje TEXT,
-            fecha TEXT
-        )
-    """)
-    
-    cursor.execute("SELECT COUNT(*) FROM usuarios")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO usuarios (rol, password) VALUES ('Creador', 'piano')")
-        cursor.execute("INSERT INTO usuarios (rol, password) VALUES ('Minero', 'oido')")
-        cursor.execute("INSERT INTO usuarios (rol, password) VALUES ('Admin', 'admin')")
+    # Creamos las tablas utilizando SQL compatible con PostgreSQL
+    with conexion_db.session as session:
+        # Tabla pruebas
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS pruebas (
+                id SERIAL PRIMARY KEY,
+                nombre_archivo TEXT,
+                bytes_audio BYTEA,
+                intentos_maximos INTEGER,
+                intentos_restantes INTEGER,
+                respuesta_b TEXT,
+                correccion_a TEXT,
+                puntuacion INTEGER,
+                estado TEXT,
+                nombre_personalizado TEXT,
+                foto_respuesta_b BYTEA,
+                foto_correccion_a BYTEA
+            )
+        """)
         
-    conexion.commit()
-    conexion.close()
+        # Tabla usuarios
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios (
+                rol TEXT PRIMARY KEY,
+                password TEXT
+            )
+        """)
+        
+        # Tabla anuncios
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS anuncios (
+                id SERIAL PRIMARY KEY,
+                mensaje TEXT
+            )
+        """)
+        
+        # Tabla mensajes_admin
+        session.execute("""
+            CREATE TABLE IF NOT EXISTS mensajes_admin (
+                id SERIAL PRIMARY KEY,
+                remitente TEXT,
+                mensaje TEXT,
+                fecha TEXT
+            )
+        """)
+        
+        # Insertar usuarios por defecto si no existen
+        resultado = session.execute("SELECT COUNT(*) FROM usuarios").fetchone()
+        if resultado[0] == 0:
+            session.execute("INSERT INTO usuarios (rol, password) VALUES ('Creador', 'piano')")
+            session.execute("INSERT INTO usuarios (rol, password) VALUES ('Minero', 'oido')")
+            session.execute("INSERT INTO usuarios (rol, password) VALUES ('Admin', 'admin')")
+            
+        session.commit()
 
 inicializar_base_de_datos()
 
-# --- 2. FUNCIONES DE BASE DE DATOS ---
+# --- 2. FUNCIONES DE BASE DE DATOS (NUBE) ---
 
 def obtener_password(rol):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("SELECT password FROM usuarios WHERE rol = ?", (rol,))
-    resultado = cursor.fetchone()
-    conexion.close()
-    return resultado[0] if resultado else None
+    with conexion_db.session as session:
+        resultado = session.execute("SELECT password FROM usuarios WHERE rol = :rol", {"rol": rol}).fetchone()
+        return resultado[0] if resultado else None
 
 def actualizar_password(rol, nueva_pass):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("UPDATE usuarios SET password = ? WHERE rol = ?", (nueva_pass, rol))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("UPDATE usuarios SET password = :password WHERE rol = :rol", {"password": nueva_pass, "rol": rol})
+        session.commit()
 
-# MODIFICADA: Traemos también las columnas de fotos de la base de datos (12 columnas en total)
 def obtener_pruebas(estado=None):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    query = """SELECT id, nombre_archivo, nombre_personalizado, intentos_maximos, 
-                      intentos_restantes, respuesta_b, correccion_a, puntuacion, 
-                      estado, bytes_audio, foto_respuesta_b, foto_correccion_a 
-               FROM pruebas"""
-    if estado:
-        query += " WHERE estado = ?"
-        cursor.execute(query, (estado,))
-    else:
-        cursor.execute(query)
-    pruebas = cursor.fetchall()
-    conexion.close()
-    return pruebas
+    with conexion_db.session as session:
+        query = """SELECT id, nombre_archivo, nombre_personalizado, intentos_maximos, 
+                          intentos_restantes, respuesta_b, correccion_a, puntuacion, 
+                          estado, bytes_audio, foto_respuesta_b, foto_correccion_a 
+                   FROM pruebas"""
+        if estado:
+            query += " WHERE estado = :estado"
+            resultado = session.execute(query, {"estado": estado}).fetchall()
+        else:
+            resultado = session.execute(query).fetchall()
+        return resultado
 
 def restar_intento(id_prueba, intentos_actuales):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("UPDATE pruebas SET intentos_restantes = ? WHERE id = ?", (intentos_actuales - 1, id_prueba))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("UPDATE pruebas SET intentos_restantes = :intentos WHERE id = :id", 
+                        {"intentos": intentos_actuales - 1, "id": id_prueba})
+        session.commit()
 
-# MODIFICADA: Guarda la justificación de texto y la foto opcional del Minero
 def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("""
-        UPDATE pruebas 
-        SET respuesta_b = ?, foto_respuesta_b = ?, estado = 'Respondido' 
-        WHERE id = ?
-    """, (respuesta, bytes_foto, id_prueba))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("""
+            UPDATE pruebas 
+            SET respuesta_b = :resp, foto_respuesta_b = :foto, estado = 'Respondido' 
+            WHERE id = :id
+        """, {"resp": respuesta, "foto": bytes_foto, "id": id_prueba})
+        session.commit()
 
-# MODIFICADA: Guarda la justificación de texto, nota y foto opcional del Creador
 def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("""
-        UPDATE pruebas 
-        SET correccion_a = ?, puntuacion = ?, foto_correccion_a = ?, estado = 'Corregido' 
-        WHERE id = ?
-    """, (correccion, puntuacion, bytes_foto, id_prueba))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("""
+            UPDATE pruebas 
+            SET correccion_a = :corr, puntuacion = :puntos, foto_correccion_a = :foto, estado = 'Corregido' 
+            WHERE id = :id
+        """, {"corr": correccion, "puntos": puntuacion, "foto": bytes_foto, "id": id_prueba})
+        session.commit()
 
 def resetear_pruebas():
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM pruebas")
-    cursor.execute("DELETE FROM sqlite_sequence WHERE name='pruebas'")
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("DELETE FROM pruebas")
+        session.commit()
 
 def borrar_prueba_individual(id_prueba):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM pruebas WHERE id = ?", (id_prueba,))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("DELETE FROM pruebas WHERE id = :id", {"id": id_prueba})
+        session.commit()
 
 def actualizar_intentos_individual(id_prueba, nuevos_intentos):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("UPDATE pruebas SET intentos_restantes = ? WHERE id = ?", (nuevos_intentos, id_prueba))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("UPDATE pruebas SET intentos_restantes = :intentos WHERE id = :id", 
+                        {"intentos": nuevos_intentos, "id": id_prueba})
+        session.commit()
 
 def obtener_anuncio():
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("SELECT mensaje FROM anuncios ORDER BY id DESC LIMIT 1")
-    resultado = cursor.fetchone()
-    conexion.close()
-    if resultado and resultado[0].strip() != "":
-        return resultado[0]
-    return None
+    with conexion_db.session as session:
+        resultado = session.execute("SELECT mensaje FROM anuncios ORDER BY id DESC LIMIT 1").fetchone()
+        if resultado and resultado[0] and resultado[0].strip() != "":
+            return resultado[0]
+        return None
 
 def actualizar_anuncio(nuevo_mensaje):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("INSERT INTO anuncios (mensaje) VALUES (?)", (nuevo_mensaje,))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("INSERT INTO anuncios (mensaje) VALUES (:msj)", {"msj": nuevo_mensaje})
+        session.commit()
 
 def enviar_mensaje_admin(remitente, mensaje):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    cursor.execute("INSERT INTO mensajes_admin (remitente, mensaje, fecha) VALUES (?, ?, ?)", (remitente, mensaje, fecha_hoy))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        session.execute("INSERT INTO mensajes_admin (remitente, mensaje, fecha) VALUES (:rem, :msj, :fec)", 
+                        {"rem": remitente, "msj": mensaje, "fec": fecha_hoy})
+        session.commit()
 
 def obtener_mensajes_admin():
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("SELECT id, remitente, mensaje, fecha FROM mensajes_admin ORDER BY id DESC")
-    mensajes = cursor.fetchall()
-    conexion.close()
-    return mensajes
+    with conexion_db.session as session:
+        return session.execute("SELECT id, remitente, mensaje, fecha FROM mensajes_admin ORDER BY id DESC").fetchall()
 
 def borrar_mensaje_admin(id_mensaje):
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM mensajes_admin WHERE id = ?", (id_mensaje,))
-    conexion.commit()
-    conexion.close()
+    with conexion_db.session as session:
+        session.execute("DELETE FROM mensajes_admin WHERE id = :id", {"id": id_mensaje})
+        session.commit()
 
 def obtener_estadisticas_globales():
-    conexion = sqlite3.connect("toneminer.db")
-    cursor = conexion.cursor()
-    cursor.execute("SELECT COUNT(*) FROM pruebas")
-    total = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM pruebas WHERE estado = 'Corregido'")
-    corregidas = cursor.fetchone()[0]
-    cursor.execute("SELECT SUM(puntuacion) FROM pruebas WHERE estado = 'Corregido'")
-    puntos_totales = cursor.fetchone()[0] or 0
-    cursor.execute("SELECT AVG(puntuacion) FROM pruebas WHERE estado = 'Corregido'")
-    nota_media = cursor.fetchone()[0]
-    cursor.execute("SELECT puntuacion FROM pruebas WHERE estado = 'Corregido' ORDER BY id DESC")
-    notas = [fila[0] for fila in cursor.fetchall()]
-    racha = 0
-    for nota in notas:
-        if nota is not None and nota >= 5:
-            racha += 1
-        else:
-            break
-    conexion.close()
-    return total, corregidas, puntos_totales, nota_media, racha
+    with conexion_db.session as session:
+        total = session.execute("SELECT COUNT(*) FROM pruebas").fetchone()[0]
+        corregidas = session.execute("SELECT COUNT(*) FROM pruebas WHERE estado = 'Corregido'").fetchone()[0]
+        puntos_totales = session.execute("SELECT SUM(puntuacion) FROM pruebas WHERE estado = 'Corregido'").fetchone()[0] or 0
+        nota_media = session.execute("SELECT AVG(puntuacion) FROM pruebas WHERE estado = 'Corregido'").fetchone()[0]
+        
+        notas_filas = session.execute("SELECT puntuacion FROM pruebas WHERE estado = 'Corregido' ORDER BY id DESC").fetchall()
+        notas = [fila[0] for fila in notas_filas]
+        racha = 0
+        for nota in notas:
+            if nota is not None and nota >= 5:
+                racha += 1
+            else:
+                break
+        return total, corregidas, puntos_totales, nota_media, racha
 
 
 # --- 3. INTERFAZ GRÁFICA (Streamlit) ---
@@ -313,6 +273,7 @@ else:
                 st.info("Aún no hay pruebas en la base de datos.")
             else:
                 for p in todas_las_pruebas:
+                    # Desempaquetado seguro de 12 variables (Postgres nos devuelve bytes del BLOB en formato BYTEA)
                     id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, audio, foto_b, foto_a = p
                     color = "🟡" if est == "Pendiente" else "🟠" if est == "Respondido" else "🟢"
                     
@@ -321,14 +282,16 @@ else:
                         st.write(f"**Intentos:** {int_rest}/{int_max}")
                         st.write(f"**Justificación de B:** {resp_b if resp_b else '*Sin responder*'}")
                         if foto_b:
-                            st.image(foto_b, caption="Foto-respuesta subida por el Minero", use_container_width=True)
+                            # En Postgres convertimos a bytes si es necesario
+                            st.image(bytes(foto_b), caption="Foto-respuesta subida por el Minero", use_container_width=True)
                         st.write(f"**Justificación de A:** {corr_a if corr_a else '*Sin corregir*'}")
                         if foto_a:
-                            st.image(foto_a, caption="Foto-corrección subida por el Creador", use_container_width=True)
+                            st.image(bytes(foto_a), caption="Foto-corrección subida por el Creador", use_container_width=True)
                         st.write(f"**Nota final:** {f'{punt}/10' if punt is not None else '*Sin puntuar*'}")
                         
                         st.write("🎧 **Auditar Audio (Controles Completos):**")
-                        st.audio(audio, format="audio/mp3")
+                        # Para reproducir el audio de Postgres usamos bytes()
+                        st.audio(bytes(audio), format="audio/mp3")
 
         with pest_buzon:
             st.subheader("📬 Mensajes recibidos")
@@ -428,14 +391,18 @@ else:
                     hoy = datetime.date.today().strftime("%d/%m/%Y")
                     nombre_final = f"Prueba {hoy}"
                 
-                conexion = sqlite3.connect("toneminer.db")
-                cursor = conexion.cursor()
-                cursor.execute("""
-                    INSERT INTO pruebas (nombre_archivo, nombre_personalizado, bytes_audio, intentos_maximos, intentos_restantes, estado)
-                    VALUES (?, ?, ?, ?, ?, 'Pendiente')
-                """, (nombre_archivo, nombre_final, datos_audio, intentos, intentos))
-                conexion.commit()
-                conexion.close()
+                with conexion_db.session as session:
+                    session.execute("""
+                        INSERT INTO pruebas (nombre_archivo, nombre_personalizado, bytes_audio, intentos_maximos, intentos_restantes, estado)
+                        VALUES (:arch, :nom, :audio, :int_max, :int_rest, 'Pendiente')
+                    """, {
+                        "arch": nombre_archivo,
+                        "nom": nombre_final,
+                        "audio": datos_audio,
+                        "int_max": intentos,
+                        "int_rest": intentos
+                    })
+                    session.commit()
                 
                 st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido subida correctamente!"
                 st.rerun()
@@ -471,27 +438,23 @@ else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
             
-            # Desempaquetado seguro de 12 variables
             id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, bytes_audio_c, foto_b_c, _ = opciones_corregir[seleccion_corregir]
             
             st.warning(f"Justificación de tu amigo: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
-            # MEJORA: El Creador puede ver la foto que subió su amigo al corregir
             if foto_b_c:
                 st.write("📷 **Foto-respuesta adjunta por el Minero:**")
-                st.image(foto_b_c, use_container_width=True)
+                st.image(bytes(foto_b_c), use_container_width=True)
             
             st.write("🎧 **Escucha la progresión para corregir:**")
-            st.audio(bytes_audio_c, format="audio/mp3")
+            st.audio(bytes(bytes_audio_c), format="audio/mp3")
             
-            # MEJORA 2: Creador puede subir una foto y justificación opcional
             st.write("### 📝 Califica la prueba")
             foto_creador = st.file_uploader("Sube una foto con la solución / partitura (Opcional):", type=["png", "jpg", "jpeg"])
             feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! El tercer acorde era menor...")
             puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=10, value=10)
             
             if st.button("Enviar Corrección"):
-                # Permitimos enviar si hay foto O si hay texto en la justificación
                 if feedback.strip() or foto_creador is not None:
                     bytes_foto_creador = foto_creador.read() if foto_creador is not None else None
                     guardar_correccion_a_con_foto(id_c, feedback.strip(), puntos_dados, bytes_foto_creador)
@@ -530,7 +493,7 @@ else:
                 st.session_state[llave] = False
                 
             if st.session_state[llave]:
-                audio_base64 = base64.b64encode(bytes_audio).decode('utf-8')
+                audio_base64 = base64.b64encode(bytes(bytes_audio)).decode('utf-8')
                 audio_src = f"data:audio/mp3;base64,{audio_base64}"
                 
                 reproductor_html = f"""
@@ -575,13 +538,11 @@ else:
                 
             st.write("---")
             
-            # MEJORA 1: Minero puede subir una foto (cámara/galería) y justificación opcional
             st.write("### 📝 Envía tu respuesta")
             foto_respuesta = st.file_uploader("Sube una foto de tu cifrado (Opcional):", type=["png", "jpg", "jpeg"])
             respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: I - V - vi - IV. El tercer acorde tiene tensión...")
             
             if st.button("Enviar respuesta"):
-                # Obligamos a que haya subido una foto O escrito una justificación (no se puede mandar vacío)
                 if respuesta_usuario.strip() or foto_respuesta is not None:
                     bytes_foto = foto_respuesta.read() if foto_respuesta is not None else None
                     guardar_respuesta_b_con_foto(id_prueba, respuesta_usuario.strip(), bytes_foto)
@@ -605,9 +566,9 @@ else:
                 with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/10"):
                     st.write(f"**Tu respuesta (Justificación):** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
-                        st.image(foto_b, caption="Tu foto-respuesta enviada", use_container_width=True)
+                        st.image(bytes(foto_b), caption="Tu foto-respuesta enviada", use_container_width=True)
                     st.write("---")
                     st.info(f"**Corrección (Justificación):** {corr_a if corr_a else '*Sin texto*'}")
                     if foto_a:
-                        st.image(foto_a, caption="Solución visual de tu amigo", use_container_width=True)
-                    st.audio(aud_cor, format="audio/mp3")
+                        st.image(bytes(foto_a), caption="Solución visual de tu amigo", use_container_width=True)
+                    st.audio(bytes(aud_cor), format="audio/mp3")
