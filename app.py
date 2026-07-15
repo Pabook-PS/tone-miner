@@ -276,7 +276,7 @@ def obtener_estadisticas_globales():
 
 
 # --- 3. INTERFAZ GRÁFICA (Streamlit) ---
-st.title("⛏️ Tone Miner ⛏️")
+st.title("⛏️ Tone Miner")
 
 if "rol" not in st.session_state:
     st.session_state["rol"] = None
@@ -465,7 +465,7 @@ else:
 
     # ================= VISTA CREADOR (Guillermo) =================
     elif st.session_state["rol"] == "Creador":
-        st.header("🎼 Panel del Creador 🎼")
+        st.header("🎼 Panel del Creador")
         
         st.subheader("📤 Subir nueva prueba")
         nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):"#, placeholder="Ej: Progresión en Re Menor, Blues..."
@@ -556,7 +556,7 @@ else:
 
     # ================= VISTA MINERO (Óscar) =================
     elif st.session_state["rol"] == "Minero":
-        st.header("🪨 Panel del Minero 🪨")
+        st.header("🪨 Panel del Minero")
         
         _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales()
         col1, col2, col3 = st.columns(3)
