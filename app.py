@@ -2,10 +2,59 @@ import sqlite3
 import streamlit as st
 import datetime
 import base64
+import requests  # Para sincronizar con GitHub
+
+# --- CONFIGURACIÓN DE SEGURIDAD GITHUB ---
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
+GITHUB_REPO = st.secrets.get("GITHUB_REPO", "")
+DB_NAME = "toneminer.db"
+
+def descargar_db_desde_github():
+    """Descarga la base de datos desde GitHub si el servidor de Streamlit se ha reiniciado"""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{DB_NAME}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json()
+        bytes_db = base64.b64decode(data["content"])
+        with open(DB_NAME, "wb") as f:
+            f.write(bytes_db)
+
+def subir_db_a_github():
+    """Sube la base de datos local a GitHub de forma invisible al hacer cambios"""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{DB_NAME}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    
+    # Intentamos obtener el 'sha' del archivo existente para poder sobreescribirlo
+    sha = None
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        sha = response.json()["sha"]
+        
+    with open(DB_NAME, "rb") as f:
+        content_encoded = base64.b64encode(f.read()).decode("utf-8")
+        
+    payload = {
+        "message": f"Sincronización automática de base de datos {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "content": content_encoded
+    }
+    if sha:
+        payload["sha"] = sha
+        
+    requests.put(url, headers=headers, json=payload)
+
+# --- SINCRONIZACIÓN INICIAL ---
+if "db_descargada" not in st.session_state:
+    descargar_db_desde_github()
+    st.session_state["db_descargada"] = True
 
 # --- 1. INICIALIZAR LA BASE DE DATOS Y TABLAS ---
 def inicializar_base_de_datos():
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     
     cursor.execute("""
@@ -21,13 +70,12 @@ def inicializar_base_de_datos():
         )
     """)
     
-    # Asegurar que todas las columnas necesarias existan (incluyendo las nuevas para fotos)
     columnas_nuevas = [
         ("puntuacion", "INTEGER"),
         ("nombre_personalizado", "TEXT"),
         ("intentos_maximos", "INTEGER"),
-        ("foto_respuesta_b", "BLOB"),      # Foto subida por el Minero como respuesta
-        ("foto_correccion_a", "BLOB")       # Foto subida por el Creador como corrección
+        ("foto_respuesta_b", "BLOB"),      
+        ("foto_correccion_a", "BLOB")       
     ]
     for col, tipo in columnas_nuevas:
         try:
@@ -72,7 +120,7 @@ inicializar_base_de_datos()
 # --- 2. FUNCIONES DE BASE DE DATOS ---
 
 def obtener_password(rol):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("SELECT password FROM usuarios WHERE rol = ?", (rol,))
     resultado = cursor.fetchone()
@@ -80,22 +128,21 @@ def obtener_password(rol):
     return resultado[0] if resultado else None
 
 def actualizar_password(rol, nueva_pass):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("UPDATE usuarios SET password = ? WHERE rol = ?", (nueva_pass, rol))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
-# MODIFICADA: Traemos también las columnas de fotos de la base de datos (12 columnas en total)
 def obtener_pruebas(estado=None):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     query = """SELECT id, nombre_archivo, nombre_personalizado, intentos_maximos, 
                       intentos_restantes, respuesta_b, correccion_a, puntuacion, 
                       estado, bytes_audio, foto_respuesta_b, foto_correccion_a 
                FROM pruebas"""
     if estado:
-        query += " WHERE estado = ?"
         cursor.execute(query, (estado,))
     else:
         cursor.execute(query)
@@ -104,15 +151,15 @@ def obtener_pruebas(estado=None):
     return pruebas
 
 def restar_intento(id_prueba, intentos_actuales):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("UPDATE pruebas SET intentos_restantes = ? WHERE id = ?", (intentos_actuales - 1, id_prueba))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
-# MODIFICADA: Guarda la justificación de texto y la foto opcional del Minero
 def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("""
         UPDATE pruebas 
@@ -121,10 +168,10 @@ def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto):
     """, (respuesta, bytes_foto, id_prueba))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
-# MODIFICADA: Guarda la justificación de texto, nota y foto opcional del Creador
 def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("""
         UPDATE pruebas 
@@ -133,31 +180,35 @@ def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto)
     """, (correccion, puntuacion, bytes_foto, id_prueba))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def resetear_pruebas():
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("DELETE FROM pruebas")
     cursor.execute("DELETE FROM sqlite_sequence WHERE name='pruebas'")
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def borrar_prueba_individual(id_prueba):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("DELETE FROM pruebas WHERE id = ?", (id_prueba,))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def actualizar_intentos_individual(id_prueba, nuevos_intentos):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("UPDATE pruebas SET intentos_restantes = ? WHERE id = ?", (nuevos_intentos, id_prueba))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def obtener_anuncio():
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("SELECT mensaje FROM anuncios ORDER BY id DESC LIMIT 1")
     resultado = cursor.fetchone()
@@ -167,22 +218,24 @@ def obtener_anuncio():
     return None
 
 def actualizar_anuncio(nuevo_mensaje):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("INSERT INTO anuncios (mensaje) VALUES (?)", (nuevo_mensaje,))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def enviar_mensaje_admin(remitente, mensaje):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     cursor.execute("INSERT INTO mensajes_admin (remitente, mensaje, fecha) VALUES (?, ?, ?)", (remitente, mensaje, fecha_hoy))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def obtener_mensajes_admin():
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("SELECT id, remitente, mensaje, fecha FROM mensajes_admin ORDER BY id DESC")
     mensajes = cursor.fetchall()
@@ -190,14 +243,15 @@ def obtener_mensajes_admin():
     return mensajes
 
 def borrar_mensaje_admin(id_mensaje):
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("DELETE FROM mensajes_admin WHERE id = ?", (id_mensaje,))
     conexion.commit()
     conexion.close()
+    subir_db_a_github()
 
 def obtener_estadisticas_globales():
-    conexion = sqlite3.connect("toneminer.db")
+    conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
     cursor.execute("SELECT COUNT(*) FROM pruebas")
     total = cursor.fetchone()[0]
@@ -332,11 +386,11 @@ else:
 
         with pest_buzon:
             st.subheader("📬 Mensajes recibidos")
-            mensajes_recibidos = obtener_mensajes_admin()
-            if not mensajes_recibidos:
+            messages_recibidos = obtener_mensajes_admin()
+            if not messages_recibidos:
                 st.info("El buzón está vacío.")
             else:
-                for m in mensajes_recibidos:
+                for m in messages_recibidos:
                     id_m, remitente, mensaje, fecha = m
                     with st.container():
                         st.markdown(f"**De:** `{remitente}` | **Fecha:** {fecha}")
@@ -428,7 +482,7 @@ else:
                     hoy = datetime.date.today().strftime("%d/%m/%Y")
                     nombre_final = f"Prueba {hoy}"
                 
-                conexion = sqlite3.connect("toneminer.db")
+                conexion = sqlite3.connect(DB_NAME)
                 cursor = conexion.cursor()
                 cursor.execute("""
                     INSERT INTO pruebas (nombre_archivo, nombre_personalizado, bytes_audio, intentos_maximos, intentos_restantes, estado)
@@ -436,6 +490,7 @@ else:
                 """, (nombre_archivo, nombre_final, datos_audio, intentos, intentos))
                 conexion.commit()
                 conexion.close()
+                subir_db_a_github()
                 
                 st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido subida correctamente!"
                 st.rerun()
@@ -471,12 +526,10 @@ else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
             
-            # Desempaquetado seguro de 12 variables
             id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, bytes_audio_c, foto_b_c, _ = opciones_corregir[seleccion_corregir]
             
             st.warning(f"Justificación de tu amigo: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
-            # MEJORA: El Creador puede ver la foto que subió su amigo al corregir
             if foto_b_c:
                 st.write("📷 **Foto-respuesta adjunta por el Minero:**")
                 st.image(foto_b_c, use_container_width=True)
@@ -484,14 +537,12 @@ else:
             st.write("🎧 **Escucha la progresión para corregir:**")
             st.audio(bytes_audio_c, format="audio/mp3")
             
-            # MEJORA 2: Creador puede subir una foto y justificación opcional
             st.write("### 📝 Califica la prueba")
             foto_creador = st.file_uploader("Sube una foto con la solución / partitura (Opcional):", type=["png", "jpg", "jpeg"])
             feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! El tercer acorde era menor...")
             puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=10, value=10)
             
             if st.button("Enviar Corrección"):
-                # Permitimos enviar si hay foto O si hay texto en la justificación
                 if feedback.strip() or foto_creador is not None:
                     bytes_foto_creador = foto_creador.read() if foto_creador is not None else None
                     guardar_correccion_a_con_foto(id_c, feedback.strip(), puntos_dados, bytes_foto_creador)
@@ -575,13 +626,11 @@ else:
                 
             st.write("---")
             
-            # MEJORA 1: Minero puede subir una foto (cámara/galería) y justificación opcional
             st.write("### 📝 Envía tu respuesta")
             foto_respuesta = st.file_uploader("Sube una foto de tu cifrado (Opcional):", type=["png", "jpg", "jpeg"])
             respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: I - V - vi - IV. El tercer acorde tiene tensión...")
             
             if st.button("Enviar respuesta"):
-                # Obligamos a que haya subido una foto O escrito una justificación (no se puede mandar vacío)
                 if respuesta_usuario.strip() or foto_respuesta is not None:
                     bytes_foto = foto_respuesta.read() if foto_respuesta is not None else None
                     guardar_respuesta_b_con_foto(id_prueba, respuesta_usuario.strip(), bytes_foto)
