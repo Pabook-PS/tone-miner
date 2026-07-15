@@ -1,9 +1,9 @@
 import streamlit as st
 import datetime
 import base64
+from sqlalchemy import text  # IMPORTANTE: Necesario para que PostgreSQL entienda las variables :clave
 
 # --- 1. CONEXIÓN Y CREACIÓN DE TABLAS EN NUBE ---
-# Usamos st.connection para conectarnos de forma segura a PostgreSQL (Supabase)
 try:
     conexion_db = st.connection("postgresql", type="sql")
 except Exception as e:
@@ -11,10 +11,9 @@ except Exception as e:
     st.stop()
 
 def inicializar_base_de_datos():
-    # Creamos las tablas utilizando SQL compatible con PostgreSQL
     with conexion_db.session as session:
-        # Tabla pruebas
-        session.execute("""
+        # Tabla pruebas compatible con PostgreSQL (BYTEA para imágenes y archivos binarios)
+        session.execute(text("""
             CREATE TABLE IF NOT EXISTS pruebas (
                 id SERIAL PRIMARY KEY,
                 nombre_archivo TEXT,
@@ -29,55 +28,55 @@ def inicializar_base_de_datos():
                 foto_respuesta_b BYTEA,
                 foto_correccion_a BYTEA
             )
-        """)
+        """))
         
         # Tabla usuarios
-        session.execute("""
+        session.execute(text("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 rol TEXT PRIMARY KEY,
                 password TEXT
             )
-        """)
+        """))
         
         # Tabla anuncios
-        session.execute("""
+        session.execute(text("""
             CREATE TABLE IF NOT EXISTS anuncios (
                 id SERIAL PRIMARY KEY,
                 mensaje TEXT
             )
-        """)
+        """))
         
         # Tabla mensajes_admin
-        session.execute("""
+        session.execute(text("""
             CREATE TABLE IF NOT EXISTS mensajes_admin (
                 id SERIAL PRIMARY KEY,
                 remitente TEXT,
                 mensaje TEXT,
                 fecha TEXT
             )
-        """)
+        """))
         
         # Insertar usuarios por defecto si no existen
-        resultado = session.execute("SELECT COUNT(*) FROM usuarios").fetchone()
-        if resultado[0] == 0:
-            session.execute("INSERT INTO usuarios (rol, password) VALUES ('Creador', 'piano')")
-            session.execute("INSERT INTO usuarios (rol, password) VALUES ('Minero', 'oido')")
-            session.execute("INSERT INTO usuarios (rol, password) VALUES ('Admin', 'admin')")
+        resultado = session.execute(text("SELECT COUNT(*) FROM usuarios")).fetchone()
+        if resultado is None or resultado[0] == 0:
+            session.execute(text("INSERT INTO usuarios (rol, password) VALUES ('Creador', 'piano')"))
+            session.execute(text("INSERT INTO usuarios (rol, password) VALUES ('Minero', 'oido')"))
+            session.execute(text("INSERT INTO usuarios (rol, password) VALUES ('Admin', 'admin')"))
             
         session.commit()
 
 inicializar_base_de_datos()
 
-# --- 2. FUNCIONES DE BASE DE DATOS (NUBE) ---
+# --- 2. FUNCIONES DE BASE DE DATOS (NUBE CON TEXT()) ---
 
 def obtener_password(rol):
     with conexion_db.session as session:
-        resultado = session.execute("SELECT password FROM usuarios WHERE rol = :rol", {"rol": rol}).fetchone()
+        resultado = session.execute(text("SELECT password FROM usuarios WHERE rol = :rol"), {"rol": rol}).fetchone()
         return resultado[0] if resultado else None
 
 def actualizar_password(rol, nueva_pass):
     with conexion_db.session as session:
-        session.execute("UPDATE usuarios SET password = :password WHERE rol = :rol", {"password": nueva_pass, "rol": rol})
+        session.execute(text("UPDATE usuarios SET password = :password WHERE rol = :rol"), {"password": nueva_pass, "rol": rol})
         session.commit()
 
 def obtener_pruebas(estado=None):
@@ -88,87 +87,87 @@ def obtener_pruebas(estado=None):
                    FROM pruebas"""
         if estado:
             query += " WHERE estado = :estado"
-            resultado = session.execute(query, {"estado": estado}).fetchall()
+            resultado = session.execute(text(query), {"estado": estado}).fetchall()
         else:
-            resultado = session.execute(query).fetchall()
+            resultado = session.execute(text(query)).fetchall()
         return resultado
 
 def restar_intento(id_prueba, intentos_actuales):
     with conexion_db.session as session:
-        session.execute("UPDATE pruebas SET intentos_restantes = :intentos WHERE id = :id", 
+        session.execute(text("UPDATE pruebas SET intentos_restantes = :intentos WHERE id = :id"), 
                         {"intentos": intentos_actuales - 1, "id": id_prueba})
         session.commit()
 
 def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto):
     with conexion_db.session as session:
-        session.execute("""
+        session.execute(text("""
             UPDATE pruebas 
             SET respuesta_b = :resp, foto_respuesta_b = :foto, estado = 'Respondido' 
             WHERE id = :id
-        """, {"resp": respuesta, "foto": bytes_foto, "id": id_prueba})
+        """), {"resp": respuesta, "foto": bytes_foto, "id": id_prueba})
         session.commit()
 
 def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto):
     with conexion_db.session as session:
-        session.execute("""
+        session.execute(text("""
             UPDATE pruebas 
             SET correccion_a = :corr, puntuacion = :puntos, foto_correccion_a = :foto, estado = 'Corregido' 
             WHERE id = :id
-        """, {"corr": correccion, "puntos": puntuacion, "foto": bytes_foto, "id": id_prueba})
+        """), {"corr": correccion, "puntos": puntuacion, "foto": bytes_foto, "id": id_prueba})
         session.commit()
 
 def resetear_pruebas():
     with conexion_db.session as session:
-        session.execute("DELETE FROM pruebas")
+        session.execute(text("DELETE FROM pruebas"))
         session.commit()
 
 def borrar_prueba_individual(id_prueba):
     with conexion_db.session as session:
-        session.execute("DELETE FROM pruebas WHERE id = :id", {"id": id_prueba})
+        session.execute(text("DELETE FROM pruebas WHERE id = :id"), {"id": id_prueba})
         session.commit()
 
 def actualizar_intentos_individual(id_prueba, nuevos_intentos):
     with conexion_db.session as session:
-        session.execute("UPDATE pruebas SET intentos_restantes = :intentos WHERE id = :id", 
+        session.execute(text("UPDATE pruebas SET intentos_restantes = :intentos WHERE id = :id"), 
                         {"intentos": nuevos_intentos, "id": id_prueba})
         session.commit()
 
 def obtener_anuncio():
     with conexion_db.session as session:
-        resultado = session.execute("SELECT mensaje FROM anuncios ORDER BY id DESC LIMIT 1").fetchone()
+        resultado = session.execute(text("SELECT mensaje FROM anuncios ORDER BY id DESC LIMIT 1")).fetchone()
         if resultado and resultado[0] and resultado[0].strip() != "":
             return resultado[0]
         return None
 
 def actualizar_anuncio(nuevo_mensaje):
     with conexion_db.session as session:
-        session.execute("INSERT INTO anuncios (mensaje) VALUES (:msj)", {"msj": nuevo_mensaje})
+        session.execute(text("INSERT INTO anuncios (mensaje) VALUES (:msj)"), {"msj": nuevo_mensaje})
         session.commit()
 
 def enviar_mensaje_admin(remitente, mensaje):
     with conexion_db.session as session:
         fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        session.execute("INSERT INTO mensajes_admin (remitente, mensaje, fecha) VALUES (:rem, :msj, :fec)", 
+        session.execute(text("INSERT INTO mensajes_admin (remitente, mensaje, fecha) VALUES (:rem, :msj, :fec)"), 
                         {"rem": remitente, "msj": mensaje, "fec": fecha_hoy})
         session.commit()
 
 def obtener_mensajes_admin():
     with conexion_db.session as session:
-        return session.execute("SELECT id, remitente, mensaje, fecha FROM mensajes_admin ORDER BY id DESC").fetchall()
+        return session.execute(text("SELECT id, remitente, mensaje, fecha FROM mensajes_admin ORDER BY id DESC")).fetchall()
 
 def borrar_mensaje_admin(id_mensaje):
     with conexion_db.session as session:
-        session.execute("DELETE FROM mensajes_admin WHERE id = :id", {"id": id_mensaje})
+        session.execute(text("DELETE FROM mensajes_admin WHERE id = :id"), {"id": id_mensaje})
         session.commit()
 
 def obtener_estadisticas_globales():
     with conexion_db.session as session:
-        total = session.execute("SELECT COUNT(*) FROM pruebas").fetchone()[0]
-        corregidas = session.execute("SELECT COUNT(*) FROM pruebas WHERE estado = 'Corregido'").fetchone()[0]
-        puntos_totales = session.execute("SELECT SUM(puntuacion) FROM pruebas WHERE estado = 'Corregido'").fetchone()[0] or 0
-        nota_media = session.execute("SELECT AVG(puntuacion) FROM pruebas WHERE estado = 'Corregido'").fetchone()[0]
+        total = session.execute(text("SELECT COUNT(*) FROM pruebas")).fetchone()[0]
+        corregidas = session.execute(text("SELECT COUNT(*) FROM pruebas WHERE estado = 'Corregido'")).fetchone()[0]
+        puntos_totales = session.execute(text("SELECT SUM(puntuacion) FROM pruebas WHERE estado = 'Corregido'")).fetchone()[0] or 0
+        nota_media = session.execute(text("SELECT AVG(puntuacion) FROM pruebas WHERE estado = 'Corregido'")).fetchone()[0]
         
-        notas_filas = session.execute("SELECT puntuacion FROM pruebas WHERE estado = 'Corregido' ORDER BY id DESC").fetchall()
+        notas_filas = session.execute(text("SELECT puntuacion FROM pruebas WHERE estado = 'Corregido' ORDER BY id DESC")).fetchall()
         notas = [fila[0] for fila in notas_filas]
         racha = 0
         for nota in notas:
@@ -273,7 +272,6 @@ else:
                 st.info("Aún no hay pruebas en la base de datos.")
             else:
                 for p in todas_las_pruebas:
-                    # Desempaquetado seguro de 12 variables (Postgres nos devuelve bytes del BLOB en formato BYTEA)
                     id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, audio, foto_b, foto_a = p
                     color = "🟡" if est == "Pendiente" else "🟠" if est == "Respondido" else "🟢"
                     
@@ -282,7 +280,6 @@ else:
                         st.write(f"**Intentos:** {int_rest}/{int_max}")
                         st.write(f"**Justificación de B:** {resp_b if resp_b else '*Sin responder*'}")
                         if foto_b:
-                            # En Postgres convertimos a bytes si es necesario
                             st.image(bytes(foto_b), caption="Foto-respuesta subida por el Minero", use_container_width=True)
                         st.write(f"**Justificación de A:** {corr_a if corr_a else '*Sin corregir*'}")
                         if foto_a:
@@ -290,7 +287,6 @@ else:
                         st.write(f"**Nota final:** {f'{punt}/10' if punt is not None else '*Sin puntuar*'}")
                         
                         st.write("🎧 **Auditar Audio (Controles Completos):**")
-                        # Para reproducir el audio de Postgres usamos bytes()
                         st.audio(bytes(audio), format="audio/mp3")
 
         with pest_buzon:
@@ -392,10 +388,10 @@ else:
                     nombre_final = f"Prueba {hoy}"
                 
                 with conexion_db.session as session:
-                    session.execute("""
+                    session.execute(text("""
                         INSERT INTO pruebas (nombre_archivo, nombre_personalizado, bytes_audio, intentos_maximos, intentos_restantes, estado)
                         VALUES (:arch, :nom, :audio, :int_max, :int_rest, 'Pendiente')
-                    """, {
+                    """), {
                         "arch": nombre_archivo,
                         "nom": nombre_final,
                         "audio": datos_audio,
