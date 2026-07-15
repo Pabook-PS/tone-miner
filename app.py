@@ -288,7 +288,7 @@ if "mensaje_toast" in st.session_state:
 
 # --- PANTALLA DE LOGIN ---
 if st.session_state["rol"] is None:
-    st.write("### 🔑 Identifícate para entrar a la mina")
+    st.write("### 🔑 Identifícate para entrar a la mina 🔑")
     rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Creador", "Minero", "Administrador"])
     
     if rol_elegido != "Selecciona una opción":
@@ -465,7 +465,7 @@ else:
 
     # ================= VISTA CREADOR (Guillermo) =================
     elif st.session_state["rol"] == "Creador":
-        st.header("👑 Panel del Creador")
+        st.header("🎼 Panel del Creador 🎼")
         
         st.subheader("📤 Subir nueva prueba")
         nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):"#, placeholder="Ej: Progresión en Re Menor, Blues..."
@@ -556,7 +556,7 @@ else:
 
     # ================= VISTA MINERO (Óscar) =================
     elif st.session_state["rol"] == "Minero":
-        st.header("⛏️ Panel del Minero")
+        st.header("🪨 Panel del Minero 🪨")
         
         _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales()
         col1, col2, col3 = st.columns(3)
