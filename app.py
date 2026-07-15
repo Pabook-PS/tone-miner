@@ -505,7 +505,7 @@ else:
         st.subheader("🗑️ Gestionar tus pruebas pendientes")
         pendientes = obtener_pruebas("Pendiente")
         if not pendientes:
-            st.info("No tienes pruebas pendientes de resolver.")
+            st.info("No hay pruebas pendientes de resolver y que puedas borrar.")
         else:
             for p in pendientes:
                 id_p, arch, nom_p, int_max, int_rest, _, _, _, _, _, _, _ = p
