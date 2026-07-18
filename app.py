@@ -135,7 +135,7 @@ def actualizar_password(rol, nueva_pass):
     conexion.close()
     subir_db_a_github()
 
-# ¡CORREGIDA!: Ahora añade la cláusula WHERE estado = ? correctamente si se filtra
+# CORREGIDA!: Ahora añade la cláusula WHERE estado = ? correctamente si se filtra
 def obtener_pruebas(estado=None):
     conexion = sqlite3.connect(DB_NAME)
     cursor = conexion.cursor()
@@ -543,7 +543,7 @@ else:
             st.write("### 📝 Califica la prueba")
             foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"])
             feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! Pero hay que picar más piedra...")
-            puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=10, value=10)
+            puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=100, value=100)
             
             if st.button("Enviar Corrección"):
                 if feedback.strip() or foto_creador is not None:
