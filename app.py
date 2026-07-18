@@ -472,7 +472,7 @@ else:
                                                    )
         st.caption("ℹ️ *Si dejas este campo vacío, la prueba se nombrará automáticamente con la fecha de hoy.*")
         
-        archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav)", type=["mp3", "wav", "acc"])
+        archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav, acc)", type=["mp3", "wav", "acc"])
         intentos = st.number_input("¿Cuántos intentos de escucha tiene?", min_value=1, max_value=10, value=3)
         
         if st.button("Subir prueba al servidor"):
