@@ -1,281 +1,150 @@
-import sqlite3
 import streamlit as st
 import datetime
-import base64
-import requests  # Para sincronizar con GitHub
+import uuid
+from supabase import create_client, Client
 
-# --- CONFIGURACIÓN DE SEGURIDAD GITHUB ---
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
-GITHUB_REPO = st.secrets.get("GITHUB_REPO", "")
-DB_NAME = "toneminer.db"
+# --- CONFIGURACIÓN DE SEGURIDAD SUPABASE ---
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
-def descargar_db_desde_github():
-    """Descarga la base de datos desde GitHub si el servidor de Streamlit se ha reiniciado"""
-    if not GITHUB_TOKEN or not GITHUB_REPO:
-        return
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{DB_NAME}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        data = response.json()
-        bytes_db = base64.b64decode(data["content"])
-        with open(DB_NAME, "wb") as f:
-            f.write(bytes_db)
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("⚠️ Faltan las credenciales de Supabase en los Secrets de Streamlit.")
+    st.stop()
 
-def subir_db_a_github():
-    """Sube la base de datos local a GitHub de forma invisible al hacer cambios"""
-    if not GITHUB_TOKEN or not GITHUB_REPO:
-        return
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{DB_NAME}"
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
-    
-    # Intentamos obtener el 'sha' del archivo existente para poder sobreescribirlo
-    sha = None
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        sha = response.json()["sha"]
-        
-    with open(DB_NAME, "rb") as f:
-        content_encoded = base64.b64encode(f.read()).decode("utf-8")
-        
-    payload = {
-        "message": f"Sincronización automática de base de datos {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
-        "content": content_encoded
-    }
-    if sha:
-        payload["sha"] = sha
-        
-    requests.put(url, headers=headers, json=payload)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- SINCRONIZACIÓN INICIAL ---
-if "db_descargada" not in st.session_state:
-    descargar_db_desde_github()
-    st.session_state["db_descargada"] = True
+# --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
+def subir_archivo_storage(bytes_file, nombre_original, prefijo, content_type):
+    """Subes un archivo al bucket 'audios' de Supabase y devuelve su URL pública"""
+    if not bytes_file:
+        return None
+    
+    ext = nombre_original.split(".")[-1] if "." in nombre_original else "bin"
+    nombre_unico = f"{prefijo}_{uuid.uuid4().hex}.{ext}"
+    
+    supabase.storage.from_("audios").upload(
+        path=nombre_unico,
+        file=bytes_file,
+        file_options={"content-type": content_type}
+    )
+    
+    return supabase.storage.from_("audios").get_public_url(nombre_unico)
 
-# --- 1. INICIALIZAR LA BASE DE DATOS Y TABLAS ---
-def inicializar_base_de_datos():
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS pruebas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre_archivo TEXT,
-            bytes_audio BLOB,
-            intentos_restantes INTEGER,
-            respuesta_b TEXT,
-            correccion_a TEXT,
-            puntuacion INTEGER,
-            estado TEXT
-        )
-    """)
-    
-    columnas_nuevas = [
-        ("puntuacion", "INTEGER"),
-        ("nombre_personalizado", "TEXT"),
-        ("intentos_maximos", "INTEGER"),
-        ("foto_respuesta_b", "BLOB"),      
-        ("foto_correccion_a", "BLOB")       
-    ]
-    for col, tipo in columnas_nuevas:
-        try:
-            cursor.execute(f"SELECT {col} FROM pruebas LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute(f"ALTER TABLE pruebas ADD COLUMN {col} {tipo}")
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            rol TEXT PRIMARY KEY,
-            password TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS anuncios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            mensaje TEXT
-        )
-    """)
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS mensajes_admin (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            remitente TEXT,
-            mensaje TEXT,
-            fecha TEXT
-        )
-    """)
-    
-    cursor.execute("SELECT COUNT(*) FROM usuarios")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO usuarios (rol, password) VALUES ('Creador', 'piano')")
-        cursor.execute("INSERT INTO usuarios (rol, password) VALUES ('Minero', 'oido')")
-        cursor.execute("INSERT INTO usuarios (rol, password) VALUES ('Admin', 'admin')")
-        
-    conexion.commit()
-    conexion.close()
-
-inicializar_base_de_datos()
-
-# --- 2. FUNCIONES DE BASE DE DATOS ---
+# --- FUNCIONES DE BASE DE DATOS (SUPABASE) ---
 
 def obtener_password(rol):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("SELECT password FROM usuarios WHERE rol = ?", (rol,))
-    resultado = cursor.fetchone()
-    conexion.close()
-    return resultado[0] if resultado else None
+    res = supabase.table("usuarios").select("password").eq("rol", rol).execute()
+    return res.data[0]["password"] if res.data else None
 
 def actualizar_password(rol, nueva_pass):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("UPDATE usuarios SET password = ? WHERE rol = ?", (nueva_pass, rol))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("usuarios").update({"password": nueva_pass}).eq("rol", rol).execute()
 
-# CORREGIDA!: Ahora añade la cláusula WHERE estado = ? correctamente si se filtra
 def obtener_pruebas(estado=None):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    query = """SELECT id, nombre_archivo, nombre_personalizado, intentos_maximos, 
-                      intentos_restantes, respuesta_b, correccion_a, puntuacion, 
-                      estado, bytes_audio, foto_respuesta_b, foto_correccion_a 
-               FROM pruebas"""
+    query = supabase.table("pruebas").select("*").order("id", desc=False)
     if estado:
-        query += " WHERE estado = ?"
-        cursor.execute(query, (estado,))
-    else:
-        cursor.execute(query)
-    pruebas = cursor.fetchall()
-    conexion.close()
-    return pruebas
+        query = query.eq("estado", estado)
+    res = query.execute()
+    
+    pruebas_tuplas = []
+    for p in res.data:
+        pruebas_tuplas.append((
+            p["id"],
+            p["nombre_archivo"],
+            p["nombre_personalizado"],
+            p["intentos_maximos"],
+            p["intentos_restantes"],
+            p["respuesta_b"],
+            p["correccion_a"],
+            p["puntuacion"],
+            p["estado"],
+            p["url_audio"],
+            p["url_foto_respuesta_b"],
+            p["url_foto_correccion_a"]
+        ))
+    return pruebas_tuplas
 
 def restar_intento(id_prueba, intentos_actuales):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("UPDATE pruebas SET intentos_restantes = ? WHERE id = ?", (intentos_actuales - 1, id_prueba))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("pruebas").update({"intentos_restantes": intentos_actuales - 1}).eq("id", id_prueba).execute()
 
-def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("""
-        UPDATE pruebas 
-        SET respuesta_b = ?, foto_respuesta_b = ?, estado = 'Respondido' 
-        WHERE id = ?
-    """, (respuesta, bytes_foto, id_prueba))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto, nombre_foto="foto.jpg"):
+    url_foto = subir_archivo_storage(bytes_foto, nombre_foto, "foto_b", "image/jpeg") if bytes_foto else None
+    data = {
+        "respuesta_b": respuesta,
+        "estado": "Respondido"
+    }
+    if url_foto:
+        data["url_foto_respuesta_b"] = url_foto
+        
+    supabase.table("pruebas").update(data).eq("id", id_prueba).execute()
 
-def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("""
-        UPDATE pruebas 
-        SET correccion_a = ?, puntuacion = ?, foto_correccion_a = ?, estado = 'Corregido' 
-        WHERE id = ?
-    """, (correccion, puntuacion, bytes_foto, id_prueba))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto, nombre_foto="foto.jpg"):
+    url_foto = subir_archivo_storage(bytes_foto, nombre_foto, "foto_a", "image/jpeg") if bytes_foto else None
+    data = {
+        "correccion_a": correccion,
+        "puntuacion": puntuacion,
+        "estado": "Corregido"
+    }
+    if url_foto:
+        data["url_foto_correccion_a"] = url_foto
+        
+    supabase.table("pruebas").update(data).eq("id", id_prueba).execute()
 
 def resetear_pruebas():
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM pruebas")
-    cursor.execute("DELETE FROM sqlite_sequence WHERE name='pruebas'")
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("pruebas").delete().neq("id", 0).execute()
 
 def borrar_prueba_individual(id_prueba):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM pruebas WHERE id = ?", (id_prueba,))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("pruebas").delete().eq("id", id_prueba).execute()
 
 def actualizar_intentos_individual(id_prueba, nuevos_intentos):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("UPDATE pruebas SET intentos_restantes = ? WHERE id = ?", (nuevos_intentos, id_prueba))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("pruebas").update({"intentos_restantes": nuevos_intentos}).eq("id", id_prueba).execute()
 
 def obtener_anuncio():
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("SELECT mensaje FROM anuncios ORDER BY id DESC LIMIT 1")
-    resultado = cursor.fetchone()
-    conexion.close()
-    if resultado and resultado[0].strip() != "":
-        return resultado[0]
+    res = supabase.table("anuncios").select("mensaje").order("id", desc=True).limit(1).execute()
+    if res.data and res.data[0]["mensaje"].strip() != "":
+        return res.data[0]["mensaje"]
     return None
 
 def actualizar_anuncio(nuevo_mensaje):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("INSERT INTO anuncios (mensaje) VALUES (?)", (nuevo_mensaje,))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("anuncios").insert({"mensaje": nuevo_mensaje}).execute()
 
 def enviar_mensaje_admin(remitente, mensaje):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
     fecha_hoy = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    cursor.execute("INSERT INTO mensajes_admin (remitente, mensaje, fecha) VALUES (?, ?, ?)", (remitente, mensaje, fecha_hoy))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("mensajes_admin").insert({
+        "remitente": remitente,
+        "mensaje": mensaje,
+        "fecha": fecha_hoy
+    }).execute()
 
 def obtener_mensajes_admin():
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("SELECT id, remitente, mensaje, fecha FROM mensajes_admin ORDER BY id DESC")
-    mensajes = cursor.fetchall()
-    conexion.close()
-    return mensajes
+    res = supabase.table("mensajes_admin").select("id, remitente, mensaje, fecha").order("id", desc=True).execute()
+    return [(m["id"], m["remitente"], m["mensaje"], m["fecha"]) for m in res.data]
 
 def borrar_mensaje_admin(id_mensaje):
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("DELETE FROM mensajes_admin WHERE id = ?", (id_mensaje,))
-    conexion.commit()
-    conexion.close()
-    subir_db_a_github()
+    supabase.table("mensajes_admin").delete().eq("id", id_mensaje).execute()
 
 def obtener_estadisticas_globales():
-    conexion = sqlite3.connect(DB_NAME)
-    cursor = conexion.cursor()
-    cursor.execute("SELECT COUNT(*) FROM pruebas")
-    total = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(*) FROM pruebas WHERE estado = 'Corregido'")
-    corregidas = cursor.fetchone()[0]
-    cursor.execute("SELECT SUM(puntuacion) FROM pruebas WHERE estado = 'Corregido'")
-    puntos_totales = cursor.fetchone()[0] or 0
-    cursor.execute("SELECT AVG(puntuacion) FROM pruebas WHERE estado = 'Corregido'")
-    nota_media = cursor.fetchone()[0]
-    cursor.execute("SELECT puntuacion FROM pruebas WHERE estado = 'Corregido' ORDER BY id DESC")
-    notas = [fila[0] for fila in cursor.fetchall()]
+    res_all = supabase.table("pruebas").select("id, estado, puntuacion").execute()
+    todas = res_all.data
+    
+    total = len(todas)
+    corregidas_list = [p for p in todas if p["estado"] == "Corregido"]
+    corregidas = len(corregidas_list)
+    
+    puntos_totales = sum([p["puntuacion"] for p in corregidas_list if p["puntuacion"] is not None])
+    nota_media = (puntos_totales / corregidas) if corregidas > 0 else None
+    
+    corregidas_ordenadas = sorted(corregidas_list, key=lambda x: x["id"], reverse=True)
     racha = 0
-    for nota in notas:
-        if nota is not None and nota >= 5:
+    for p in corregidas_ordenadas:
+        if p["puntuacion"] is not None and p["puntuacion"] >= 5:
             racha += 1
         else:
             break
-    conexion.close()
+            
     return total, corregidas, puntos_totales, nota_media, racha
 
 
-# --- 3. INTERFAZ GRÁFICA (Streamlit) ---
+# --- INTERFAZ GRÁFICA (Streamlit) ---
 st.title("⛏️ Tone Miner")
 
 if "rol" not in st.session_state:
@@ -369,7 +238,7 @@ else:
                 st.info("Aún no hay pruebas en la base de datos.")
             else:
                 for p in todas_las_pruebas:
-                    id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, audio, foto_b, foto_a = p
+                    id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, url_audio, foto_b, foto_a = p
                     color = "🟡" if est == "Pendiente" else "🟠" if est == "Respondido" else "🟢"
                     
                     titulo = f"{color} '{nom_p}' (Archivo original: {arch})"
@@ -384,7 +253,7 @@ else:
                         st.write(f"**Nota final:** {f'{punt}/10' if punt is not None else '*Sin puntuar*'}")
                         
                         st.write("🎧 **Auditar Audio (Controles Completos):**")
-                        st.audio(audio, format="audio/mp3")
+                        st.audio(url_audio)
 
         with pest_buzon:
             st.subheader("📬 Mensajes recibidos")
@@ -468,8 +337,7 @@ else:
         st.header("🎼 Panel del Creador")
         
         st.subheader("📤 Subir nueva prueba")
-        nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):"#, placeholder="Ej: Progresión en Re Menor, Blues..."
-                                                   )
+        nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):")
         st.caption("ℹ️ *Si dejas este campo vacío, la prueba se nombrará automáticamente con la fecha de hoy.*")
         
         archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav, .acc)", type=["mp3", "wav", "acc"])
@@ -477,7 +345,7 @@ else:
         
         if st.button("Subir prueba al servidor"):
             if archivo_subido is not None:
-                datos_audio = archivo_subido.read()
+                bytes_audio = archivo_subido.read()
                 nombre_archivo = archivo_subido.name
                 
                 nombre_final = nombre_personalizado_input.strip()
@@ -485,15 +353,16 @@ else:
                     hoy = datetime.date.today().strftime("%d/%m/%Y")
                     nombre_final = f"Prueba {hoy}"
                 
-                conexion = sqlite3.connect(DB_NAME)
-                cursor = conexion.cursor()
-                cursor.execute("""
-                    INSERT INTO pruebas (nombre_archivo, nombre_personalizado, bytes_audio, intentos_maximos, intentos_restantes, estado)
-                    VALUES (?, ?, ?, ?, ?, 'Pendiente')
-                """, (nombre_archivo, nombre_final, datos_audio, intentos, intentos))
-                conexion.commit()
-                conexion.close()
-                subir_db_a_github()
+                url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audio", archivo_subido.type)
+                
+                supabase.table("pruebas").insert({
+                    "nombre_archivo": nombre_archivo,
+                    "nombre_personalizado": nombre_final,
+                    "url_audio": url_audio,
+                    "intentos_maximos": intentos,
+                    "intentos_restantes": intentos,
+                    "estado": "Pendiente"
+                }).execute()
                 
                 st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido subida correctamente!"
                 st.rerun()
@@ -529,7 +398,7 @@ else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
             
-            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, bytes_audio_c, foto_b_c, _ = opciones_corregir[seleccion_corregir]
+            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, _ = opciones_corregir[seleccion_corregir]
             
             st.warning(f"Justificación del Minero: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
@@ -538,7 +407,7 @@ else:
                 st.image(foto_b_c, use_container_width=True)
             
             st.write("🎧 **Escucha la progresión para corregir:**")
-            st.audio(bytes_audio_c, format="audio/mp3")
+            st.audio(url_audio_c)
             
             st.write("### 📝 Califica la prueba")
             foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"])
@@ -548,7 +417,8 @@ else:
             if st.button("Enviar Corrección"):
                 if feedback.strip() or foto_creador is not None:
                     bytes_foto_creador = foto_creador.read() if foto_creador is not None else None
-                    guardar_correccion_a_con_foto(id_c, feedback.strip(), puntos_dados, bytes_foto_creador)
+                    nombre_f = foto_creador.name if foto_creador is not None else "foto.jpg"
+                    guardar_correccion_a_con_foto(id_c, feedback.strip(), puntos_dados, bytes_foto_creador, nombre_f)
                     st.session_state["mensaje_toast"] = f"¡Calificación de {puntos_dados}/10 enviada correctamente!"
                     st.rerun()
                 else:
@@ -575,7 +445,7 @@ else:
             opciones_pruebas = {f"'{p[2]}'": p for p in pruebas_disp}
             seleccion = st.selectbox("Selecciona la prueba:", list(opciones_pruebas.keys()))
             
-            id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, bytes_audio, _, _ = opciones_pruebas[seleccion]
+            id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, url_audio, _, _ = opciones_pruebas[seleccion]
             
             st.write(f"### 📊 Intentos: **{intentos_restantes} / {int_max}**")
             
@@ -584,16 +454,13 @@ else:
                 st.session_state[llave] = False
                 
             if st.session_state[llave]:
-                audio_base64 = base64.b64encode(bytes_audio).decode('utf-8')
-                audio_src = f"data:audio/mp3;base64,{audio_base64}"
-                
                 reproductor_html = f"""
                 <div style="background-color: #1E1E1E; padding: 10px 15px; border-radius: 8px; text-align: center; border: 1px solid #FF4B4B; color: white; font-family: sans-serif; box-sizing: border-box;">
                     <span style="font-size: 20px; display: block; margin-bottom: 2px;">🎵</span>
                     <strong>Reproduciendo audio...</strong>
                     <p style="font-size: 11px; color: #888; margin-top: 2px; margin-bottom: 0px;">Escucha atentamente. Solo sonará una vez.</p>
                     <audio id="minerAudio" autoplay>
-                        <source src="{audio_src}" type="audio/mp3">
+                        <source src="{url_audio}">
                     </audio>
                 </div>
                 <script>
@@ -636,7 +503,8 @@ else:
             if st.button("Enviar respuesta"):
                 if respuesta_usuario.strip() or foto_respuesta is not None:
                     bytes_foto = foto_respuesta.read() if foto_respuesta is not None else None
-                    guardar_respuesta_b_con_foto(id_prueba, respuesta_usuario.strip(), bytes_foto)
+                    nombre_f = foto_respuesta.name if foto_respuesta is not None else "foto.jpg"
+                    guardar_respuesta_b_con_foto(id_prueba, respuesta_usuario.strip(), bytes_foto, nombre_f)
                     if f"reproducir_{id_prueba}" in st.session_state:
                         del st.session_state[f"reproducir_{id_prueba}"]
                     st.session_state["mensaje_toast"] = "¡Tu respuesta se ha enviado correctamente!"
@@ -662,4 +530,4 @@ else:
                     st.info(f"**Corrección:** {corr_a if corr_a else '*Sin texto*'}")
                     if foto_a:
                         st.image(foto_a, caption="Solución visual del Creador", use_container_width=True)
-                    st.audio(aud_cor, format="audio/mp3")
+                    st.audio(aud_cor)
