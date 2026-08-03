@@ -337,13 +337,24 @@ else:
         st.header("🎼 Panel del Creador")
         
         st.subheader("📤 Subir nueva prueba")
-        nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):")
+        
+        if "up_nombre_creador" not in st.session_state:
+            st.session_state["up_nombre_creador"] = str(uuid.uuid4())
+            
+        nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):", key=st.session_state["up_nombre_creador"])
         st.caption("ℹ️ *Si dejas este campo vacío, la prueba se nombrará automáticamente con la fecha de hoy.*")
         
-        archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav, .acc)", type=["mp3", "wav", "acc"])
+        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Acordes", "Ritmo", "Dictado"])
+        
+        if "up_audio_creador" not in st.session_state:
+            st.session_state["up_audio_creador"] = str(uuid.uuid4())
+            
+        archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav, .acc)", type=["mp3", "wav", "acc"], key=st.session_state["up_audio_creador"])
         intentos = st.number_input("¿Cuántos intentos de escucha tiene?", min_value=1, max_value=10, value=3)
         
-        if st.button("Subir prueba al servidor"):
+        confirmacion_subida = st.checkbox("Estoy seguro de que quiero subir esta prueba.")
+        
+        if st.button("Subir prueba al servidor", disabled=not confirmacion_subida):
             if archivo_subido is not None:
                 bytes_audio = archivo_subido.read()
                 nombre_archivo = archivo_subido.name
@@ -352,6 +363,9 @@ else:
                 if not nombre_final:
                     hoy = datetime.date.today().strftime("%d/%m/%Y")
                     nombre_final = f"Prueba {hoy}"
+                
+                if categoria_elegida != "Ninguna":
+                    nombre_final = f"[{categoria_elegida}] {nombre_final}"
                 
                 url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audio", archivo_subido.type)
                 
@@ -363,6 +377,10 @@ else:
                     "intentos_restantes": intentos,
                     "estado": "Pendiente"
                 }).execute()
+                
+                # Limpia los campos
+                st.session_state["up_audio_creador"] = str(uuid.uuid4())
+                st.session_state["up_nombre_creador"] = str(uuid.uuid4())
                 
                 st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido subida correctamente!"
                 st.rerun()
@@ -410,19 +428,58 @@ else:
             st.audio(url_audio_c)
             
             st.write("### 📝 Califica la prueba")
-            foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"])
-            feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! Pero hay que picar más piedra...")
-            puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=100, value=100)
             
-            if st.button("Enviar Corrección"):
+            if "up_foto_creador" not in st.session_state:
+                st.session_state["up_foto_creador"] = str(uuid.uuid4())
+            if "up_texto_creador" not in st.session_state:
+                st.session_state["up_texto_creador"] = str(uuid.uuid4())
+                
+            foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_foto_creador"])
+            feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! Pero hay que picar más piedra...", key=st.session_state["up_texto_creador"])
+            puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=10, value=10)
+            
+            confirmacion_correccion = st.checkbox("Confirmo que la corrección y la nota son definitivas.")
+            
+            if st.button("Enviar Corrección", disabled=not confirmacion_correccion):
                 if feedback.strip() or foto_creador is not None:
                     bytes_foto_creador = foto_creador.read() if foto_creador is not None else None
                     nombre_f = foto_creador.name if foto_creador is not None else "foto.jpg"
                     guardar_correccion_a_con_foto(id_c, feedback.strip(), puntos_dados, bytes_foto_creador, nombre_f)
+                    
+                    # Limpia los campos
+                    st.session_state["up_foto_creador"] = str(uuid.uuid4()) 
+                    st.session_state["up_texto_creador"] = str(uuid.uuid4())
+                    
                     st.session_state["mensaje_toast"] = f"¡Calificación de {puntos_dados}/10 enviada correctamente!"
                     st.rerun()
                 else:
                     st.error("Por favor, escribe una justificación o sube una fotografía para poder enviar la corrección.")
+
+        st.write("---")
+        
+        st.subheader("📚 Historial de pruebas corregidas")
+        corregidas_creador = obtener_pruebas("Corregido")
+        if not corregidas_creador:
+            st.info("Aún no hay pruebas corregidas en el historial.")
+        else:
+            filtro_cat = st.text_input("🔍 Buscar por categoría o título (Ej: Intervalos):", placeholder="Filtra tus pruebas...", key="filtro_creador")
+            
+            for c in corregidas_creador:
+                id_cor, arch, nom_cor, int_max, int_rest, resp_b, corr_a, punt_cor, est, aud_cor, foto_b, foto_a = c
+                
+                if filtro_cat and filtro_cat.lower() not in nom_cor.lower():
+                    continue
+                    
+                with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/10"):
+                    st.write(f"**Justificación del Minero:** {resp_b if resp_b else '*Sin texto*'}")
+                    if foto_b:
+                        st.image(foto_b, caption="Foto-respuesta del Minero", use_container_width=True)
+                    st.write("---")
+                    st.info(f"**Tu corrección:** {corr_a if corr_a else '*Sin texto*'}")
+                    if foto_a:
+                        st.image(foto_a, caption="Tu solución visual", use_container_width=True)
+                    st.audio(aud_cor)
+
 
     # ================= VISTA MINERO (Óscar) =================
     elif st.session_state["rol"] == "Minero":
@@ -497,16 +554,29 @@ else:
             st.write("---")
             
             st.write("### 📝 Envía tu respuesta")
-            foto_respuesta = st.file_uploader("Sube una foto de tu cifrado (Opcional):", type=["png", "jpg", "jpeg"])
-            respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: El tercer acorde tiene tensión...")
             
-            if st.button("Enviar respuesta"):
+            if "up_foto_minero" not in st.session_state:
+                st.session_state["up_foto_minero"] = str(uuid.uuid4())
+            if "up_texto_minero" not in st.session_state:
+                st.session_state["up_texto_minero"] = str(uuid.uuid4())
+                
+            foto_respuesta = st.file_uploader("Sube una foto de tu cifrado (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_foto_minero"])
+            respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: El tercer acorde tiene tensión...", key=st.session_state["up_texto_minero"])
+            
+            confirmacion_respuesta = st.checkbox("Estoy seguro de que quiero enviar esta respuesta.")
+            
+            if st.button("Enviar respuesta", disabled=not confirmacion_respuesta):
                 if respuesta_usuario.strip() or foto_respuesta is not None:
                     bytes_foto = foto_respuesta.read() if foto_respuesta is not None else None
                     nombre_f = foto_respuesta.name if foto_respuesta is not None else "foto.jpg"
                     guardar_respuesta_b_con_foto(id_prueba, respuesta_usuario.strip(), bytes_foto, nombre_f)
                     if f"reproducir_{id_prueba}" in st.session_state:
                         del st.session_state[f"reproducir_{id_prueba}"]
+                        
+                    # Limpia los campos
+                    st.session_state["up_foto_minero"] = str(uuid.uuid4()) 
+                    st.session_state["up_texto_minero"] = str(uuid.uuid4())
+                    
                     st.session_state["mensaje_toast"] = "¡Tu respuesta se ha enviado correctamente!"
                     st.rerun()
                 else:
