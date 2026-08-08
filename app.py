@@ -227,7 +227,7 @@ else:
             col_t.metric("Pruebas", total)
             col_c.metric("Completadas", corregidas)
             col_p.metric("Puntos", f"{puntos_totales}")
-            col_m.metric("Media", f"{round(nota_media, 2)}/10" if nota_media else "N/A")
+            col_m.metric("Media", f"{round(nota_media, 2)}/100" if nota_media else "N/A")
             col_r.metric("Racha 🔥", f"{racha}")
                 
             st.write("---")
@@ -250,7 +250,7 @@ else:
                         st.write(f"**Justificación de A:** {corr_a if corr_a else '*Sin corregir*'}")
                         if foto_a:
                             st.image(foto_a, caption="Foto-corrección subida por el Creador", use_container_width=True)
-                        st.write(f"**Nota final:** {f'{punt}/10' if punt is not None else '*Sin puntuar*'}")
+                        st.write(f"**Nota final:** {f'{punt}/100' if punt is not None else '*Sin puntuar*'}")
                         
                         st.write("🎧 **Auditar Audio (Controles Completos):**")
                         st.audio(url_audio)
@@ -457,7 +457,7 @@ else:
                     st.session_state["up_texto_creador"] = str(uuid.uuid4())
                     st.session_state["up_check_correccion"] = str(uuid.uuid4())
                     
-                    st.session_state["mensaje_toast"] = f"¡Calificación de {puntos_dados}/10 enviada correctamente!"
+                    st.session_state["mensaje_toast"] = f"¡Calificación de {puntos_dados}/100 enviada correctamente!"
                     st.rerun()
                 else:
                     st.error("Por favor, escribe una justificación o sube una fotografía para poder enviar la corrección.")
@@ -477,7 +477,7 @@ else:
                 if filtro_cat and filtro_cat.lower() not in nom_cor.lower():
                     continue
                     
-                with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/10"):
+                with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/100"):
                     st.write(f"**Justificación del Minero:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
                         st.image(foto_b, caption="Foto-respuesta del Minero", use_container_width=True)
@@ -495,7 +495,7 @@ else:
         _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales()
         col1, col2, col3 = st.columns(3)
         col1.metric("Tus Puntos 🏆", f"{puntos_totales} pts")
-        col2.metric("Nota Media ⭐", f"{round(nota_media, 2)}/10" if nota_media else "N/A")
+        col2.metric("Nota Media ⭐", f"{round(nota_media, 2)}/100" if nota_media else "N/A")
         col3.metric("Racha 🔥", f"{racha} seguidas")
         
         st.write("---")
@@ -602,7 +602,7 @@ else:
         else:
             for c in corregidas:
                 id_cor, _, nom_cor, _, _, resp_b, corr_a, punt_cor, _, aud_cor, foto_b, foto_a = c
-                with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/10"):
+                with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/100"):
                     st.write(f"**Tu respuesta:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
                         st.image(foto_b, caption="Tu foto-respuesta enviada", use_container_width=True)
