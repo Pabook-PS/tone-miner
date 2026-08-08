@@ -442,7 +442,7 @@ else:
                 
             foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_foto_creador"])
             feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! Pero hay que picar más piedra...", key=st.session_state["up_texto_creador"])
-            puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=10, value=10)
+            puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=100, value=0)
             
             confirmacion_correccion = st.checkbox("Confirmo que la corrección y la nota son definitivas.", key=st.session_state["up_check_correccion"])
             
