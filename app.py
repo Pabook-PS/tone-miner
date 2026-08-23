@@ -385,14 +385,18 @@ else:
         nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):", key=st.session_state["up_nombre_creador"])
         st.caption("ℹ️ *Si dejas este campo vacío, la prueba se nombrará automáticamente con la fecha de hoy.*")
         
-        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
+        if "up_check_obra_creador" not in st.session_state:
+            st.session_state["up_check_obra_creador"] = str(uuid.uuid4())
+        mostrar_campo_obra = st.checkbox("Nombre de obra", key=st.session_state["up_check_obra_creador"])
         
         nombre_obra_input = ""
-        if categoria_elegida == "Fragmentos":
+        if mostrar_campo_obra:
             if "up_obra_creador" not in st.session_state:
                 st.session_state["up_obra_creador"] = str(uuid.uuid4())
             nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Quinteto con piano en do mayor - Medtner", key=st.session_state["up_obra_creador"])
             st.caption(f"ℹ️ *{minero_activo} solo verá este nombre tras resolver la prueba.*")
+
+        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
@@ -423,7 +427,7 @@ else:
                 if categoria_elegida != "Ninguna":
                     nombre_final = f"[{categoria_elegida}] {nombre_final}"
                     
-                if categoria_elegida == "Fragmentos" and nombre_obra_input.strip():
+                if mostrar_campo_obra and nombre_obra_input.strip():
                     nombre_final = f"{nombre_final} | Obra: {nombre_obra_input.strip()}"
                 
                 url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audios", archivo_subido.type)
@@ -448,6 +452,7 @@ else:
                 st.session_state["up_audio_creador"] = str(uuid.uuid4())
                 st.session_state["up_solucion_creador"] = str(uuid.uuid4())
                 st.session_state["up_nombre_creador"] = str(uuid.uuid4())
+                st.session_state["up_check_obra_creador"] = str(uuid.uuid4())
                 if "up_obra_creador" in st.session_state:
                     st.session_state["up_obra_creador"] = str(uuid.uuid4())
                 st.session_state["up_check_creador"] = str(uuid.uuid4())
