@@ -14,13 +14,13 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
-def subir_archivo_storage(bytes_file, nombre_original, prefijo, content_type):
-    """Subes un archivo al bucket 'audios' de Supabase y devuelve su URL pública"""
+def subir_archivo_storage(bytes_file, nombre_original, subcarpeta, content_type):
+    """Sube un archivo al bucket 'audios' dentro de una subcarpeta organizada y devuelve su URL pública"""
     if not bytes_file:
         return None
     
     ext = nombre_original.split(".")[-1] if "." in nombre_original else "bin"
-    nombre_unico = f"{prefijo}_{uuid.uuid4().hex}.{ext}"
+    nombre_unico = f"{subcarpeta}/{uuid.uuid4().hex}.{ext}"
     
     supabase.storage.from_("audios").upload(
         path=nombre_unico,
@@ -39,10 +39,12 @@ def obtener_password(rol):
 def actualizar_password(rol, nueva_pass):
     supabase.table("usuarios").update({"password": nueva_pass}).eq("rol", rol).execute()
 
-def obtener_pruebas(estado=None):
+def obtener_pruebas(estado=None, destinatario=None):
     query = supabase.table("pruebas").select("*").order("id", desc=False)
     if estado:
         query = query.eq("estado", estado)
+    if destinatario:
+        query = query.eq("destinatario", destinatario)
     res = query.execute()
     
     pruebas_tuplas = []
@@ -59,7 +61,8 @@ def obtener_pruebas(estado=None):
             p["estado"],
             p["url_audio"],
             p["url_foto_respuesta_b"],
-            p["url_foto_correccion_a"]
+            p["url_foto_correccion_a"],
+            p.get("destinatario", "Minero")
         ))
     return pruebas_tuplas
 
@@ -67,7 +70,7 @@ def restar_intento(id_prueba, intentos_actuales):
     supabase.table("pruebas").update({"intentos_restantes": intentos_actuales - 1}).eq("id", id_prueba).execute()
 
 def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto, nombre_foto="foto.jpg"):
-    url_foto = subir_archivo_storage(bytes_foto, nombre_foto, "foto_b", "image/jpeg") if bytes_foto else None
+    url_foto = subir_archivo_storage(bytes_foto, nombre_foto, "respuestas_b", "image/jpeg") if bytes_foto else None
     data = {
         "respuesta_b": respuesta,
         "estado": "Respondido"
@@ -78,7 +81,7 @@ def guardar_respuesta_b_con_foto(id_prueba, respuesta, bytes_foto, nombre_foto="
     supabase.table("pruebas").update(data).eq("id", id_prueba).execute()
 
 def guardar_correccion_a_con_foto(id_prueba, correccion, puntuacion, bytes_foto, nombre_foto="foto.jpg"):
-    url_foto = subir_archivo_storage(bytes_foto, nombre_foto, "foto_a", "image/jpeg") if bytes_foto else None
+    url_foto = subir_archivo_storage(bytes_foto, nombre_foto, "soluciones_a", "image/jpeg") if bytes_foto else None
     data = {
         "correccion_a": correccion,
         "puntuacion": puntuacion,
@@ -122,8 +125,11 @@ def obtener_mensajes_admin():
 def borrar_mensaje_admin(id_mensaje):
     supabase.table("mensajes_admin").delete().eq("id", id_mensaje).execute()
 
-def obtener_estadisticas_globales():
-    res_all = supabase.table("pruebas").select("id, estado, puntuacion").execute()
+def obtener_estadisticas_globales(destinatario=None):
+    query = supabase.table("pruebas").select("id, estado, puntuacion, destinatario")
+    if destinatario:
+        query = query.eq("destinatario", destinatario)
+    res_all = query.execute()
     todas = res_all.data
     
     total = len(todas)
@@ -158,12 +164,12 @@ if "mensaje_toast" in st.session_state:
 # --- PANTALLA DE LOGIN ---
 if st.session_state["rol"] is None:
     st.write("### 🔑 Identifícate para entrar a la mina 🔑")
-    rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Creador", "Minero", "Administrador"])
+    rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Creador", "Minero", "Minero 2", "Administrador"])
     
     if rol_elegido != "Selecciona una opción":
         password = st.text_input("Introduce tu contraseña de acceso:", type="password")
         if st.button("Entrar"):
-            rol_db = "Creador" if rol_elegido == "Creador" else "Minero" if rol_elegido == "Minero" else "Admin"
+            rol_db = "Creador" if rol_elegido == "Creador" else "Admin" if rol_elegido == "Administrador" else rol_elegido
             if password == obtener_password(rol_db):
                 st.session_state["rol"] = rol_db
                 st.session_state["mensaje_toast"] = f"¡Acceso concedido como {rol_db}!"
@@ -180,6 +186,19 @@ else:
     with st.sidebar:
         st.write(f"Conectado como: **{st.session_state['rol']}**")
         st.write("---")
+
+        if st.session_state["rol"] == "Creador":
+            if "minero_seleccionado" not in st.session_state:
+                st.session_state["minero_seleccionado"] = "Minero"
+            
+            st.subheader("🎯 Minero de trabajo")
+            minero_sel = st.selectbox(
+                "Gestionar ejercicios para:",
+                ["Minero", "Minero 2"],
+                index=0 if st.session_state["minero_seleccionado"] == "Minero" else 1
+            )
+            st.session_state["minero_seleccionado"] = minero_sel
+            st.write("---")
         
         with st.expander("⚙️ Cambiar mi contraseña"):
             pass_actual = st.text_input("Contraseña actual", type="password", key="pass_act")
@@ -195,7 +214,7 @@ else:
                 else:
                     st.error("La contraseña actual no coincide.")
         
-        if st.session_state["rol"] in ["Creador", "Minero"]:
+        if st.session_state["rol"] in ["Creador", "Minero", "Minero 2"]:
             st.write("---")
             with st.expander("📬 Mensaje al Administrador"):
                 st.write("¿Tienes algún problema técnico o sugerencia?")
@@ -221,8 +240,11 @@ else:
         ])
         
         with pest_stats:
+            filtro_admin_minero = st.selectbox("Filtrar métricas por minero:", ["Todos", "Minero", "Minero 2"])
+            dest_filtro = None if filtro_admin_minero == "Todos" else filtro_admin_minero
+            
             st.subheader("📈 Rendimiento del Juego")
-            total, corregidas, puntos_totales, nota_media, racha = obtener_estadisticas_globales()
+            total, corregidas, puntos_totales, nota_media, racha = obtener_estadisticas_globales(dest_filtro)
             col_t, col_c, col_p, col_m, col_r = st.columns(5)
             col_t.metric("Pruebas", total)
             col_c.metric("Completadas", corregidas)
@@ -232,21 +254,22 @@ else:
                 
             st.write("---")
             st.subheader("📋 Historial Completo y Auditoría")
-            todas_las_pruebas = obtener_pruebas()
+            todas_las_pruebas = obtener_pruebas(destinatario=dest_filtro)
             
             if not todas_las_pruebas:
-                st.info("Aún no hay pruebas en la base de datos.")
+                st.info("Aún no hay pruebas registradas.")
             else:
                 for p in todas_las_pruebas:
-                    id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, url_audio, foto_b, foto_a = p
+                    id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, url_audio, foto_b, foto_a, dest_p = p
                     color = "🟡" if est == "Pendiente" else "🟠" if est == "Respondido" else "🟢"
                     
-                    titulo = f"{color} '{nom_p}' (Archivo original: {arch})"
+                    titulo = f"{color} [{dest_p}] '{nom_p}' (Archivo: {arch})"
                     with st.expander(f"{titulo} - [{est}]"):
+                        st.write(f"**Destinatario:** {dest_p}")
                         st.write(f"**Intentos:** {int_rest}/{int_max}")
                         st.write(f"**Justificación de B:** {resp_b if resp_b else '*Sin responder*'}")
                         if foto_b:
-                            st.image(foto_b, caption="Foto-respuesta subida por el Minero", use_container_width=True)
+                            st.image(foto_b, caption=f"Foto-respuesta subida por {dest_p}", use_container_width=True)
                         st.write(f"**Justificación de A:** {corr_a if corr_a else '*Sin corregir*'}")
                         if foto_a:
                             st.image(foto_a, caption="Foto-corrección subida por el Creador", use_container_width=True)
@@ -296,10 +319,10 @@ else:
             st.subheader("🛠️ Ajustar Pruebas")
             todas_control = obtener_pruebas()
             if todas_control:
-                opciones_gestion = {f"'{p[2]}'": p for p in todas_control}
+                opciones_gestion = {f"[{p[12]}] '{p[2]}'": p for p in todas_control}
                 seleccion_gestion = st.selectbox("Selecciona una prueba:", list(opciones_gestion.keys()))
                 prueba_g = opciones_gestion[seleccion_gestion]
-                id_g, _, nom_g, int_max_g, int_rest_g, _, _, _, _, _, _, _ = prueba_g
+                id_g, _, nom_g, int_max_g, int_rest_g, _, _, _, _, _, _, _, _ = prueba_g
                 
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
@@ -317,8 +340,8 @@ else:
                         st.rerun()
 
         with pest_pass:
-            st.write(f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero:** `{obtener_password('Minero')}`")
-            usuario_a_modificar = st.selectbox("Selecciona usuario:", ["Creador", "Minero", "Admin"])
+            st.write(f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero:** `{obtener_password('Minero')}` | 🔑 **Minero 2:** `{obtener_password('Minero 2')}`")
+            usuario_a_modificar = st.selectbox("Selecciona usuario:", ["Creador", "Minero", "Minero 2", "Admin"])
             pass_nueva_admin = st.text_input("Nueva contraseña:", type="password")
             if st.button("Forzar cambio"):
                 actualizar_password(usuario_a_modificar, pass_nueva_admin)
@@ -332,11 +355,12 @@ else:
                 st.session_state["mensaje_toast"] = "¡Base de datos reseteada!"
                 st.rerun()
 
-    # ================= VISTA CREADOR (Guillermo) =================
+    # ================= VISTA CREADOR =================
     elif st.session_state["rol"] == "Creador":
-        st.header("🎼 Panel del Creador")
+        minero_activo = st.session_state.get("minero_seleccionado", "Minero")
+        st.header(f"🎼 Panel del Creador — {minero_activo}")
         
-        st.subheader("📤 Subir nueva prueba")
+        st.subheader(f"📤 Subir nueva prueba para {minero_activo}")
         
         if "up_nombre_creador" not in st.session_state:
             st.session_state["up_nombre_creador"] = str(uuid.uuid4())
@@ -351,6 +375,7 @@ else:
             if "up_obra_creador" not in st.session_state:
                 st.session_state["up_obra_creador"] = str(uuid.uuid4())
             nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Quinteto con piano en do mayor - Medtner", key=st.session_state["up_obra_creador"])
+            st.caption(f"ℹ️ *{minero_activo} solo verá este nombre tras resolver la prueba.*")
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
@@ -366,7 +391,7 @@ else:
         if "up_check_creador" not in st.session_state:
             st.session_state["up_check_creador"] = str(uuid.uuid4())
             
-        confirmacion_subida = st.checkbox("Estoy seguro de que quiero subir esta prueba.", key=st.session_state["up_check_creador"])
+        confirmacion_subida = st.checkbox(f"Estoy seguro de que quiero subir esta prueba para {minero_activo}.", key=st.session_state["up_check_creador"])
         
         if st.button("Subir prueba al servidor", disabled=not confirmacion_subida):
             if archivo_subido is not None:
@@ -384,12 +409,12 @@ else:
                 if categoria_elegida == "Fragmentos" and nombre_obra_input.strip():
                     nombre_final = f"{nombre_final} | Obra: {nombre_obra_input.strip()}"
                 
-                url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audio", archivo_subido.type)
+                url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audios", archivo_subido.type)
                 
                 url_foto_solucion = None
                 if foto_solucion_subida is not None:
                     bytes_solucion = foto_solucion_subida.read()
-                    url_foto_solucion = subir_archivo_storage(bytes_solucion, foto_solucion_subida.name, "foto_a", foto_solucion_subida.type)
+                    url_foto_solucion = subir_archivo_storage(bytes_solucion, foto_solucion_subida.name, "soluciones_a", foto_solucion_subida.type)
                 
                 supabase.table("pruebas").insert({
                     "nombre_archivo": nombre_archivo,
@@ -398,7 +423,8 @@ else:
                     "url_foto_correccion_a": url_foto_solucion,
                     "intentos_maximos": intentos,
                     "intentos_restantes": intentos,
-                    "estado": "Pendiente"
+                    "estado": "Pendiente",
+                    "destinatario": minero_activo
                 }).execute()
                 
                 # Limpia los campos y la casilla
@@ -409,46 +435,46 @@ else:
                     st.session_state["up_obra_creador"] = str(uuid.uuid4())
                 st.session_state["up_check_creador"] = str(uuid.uuid4())
                 
-                st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido subida correctamente!"
+                st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido asignada a {minero_activo}!"
                 st.rerun()
             else:
                 st.error("Por favor, sube un archivo de audio primero.")
 
         st.write("---")
         
-        st.subheader("🗑️ Gestionar tus pruebas pendientes")
-        pendientes = obtener_pruebas("Pendiente")
+        st.subheader(f"🗑️ Gestionar pruebas pendientes ({minero_activo})")
+        pendientes = obtener_pruebas("Pendiente", destinatario=minero_activo)
         if not pendientes:
-            st.info("No hay pruebas pendientes de resolver y que puedas borrar.")
+            st.info(f"No hay pruebas pendientes de resolver para {minero_activo}.")
         else:
             for p in pendientes:
-                id_p, arch, nom_p, int_max, int_rest, _, _, _, _, _, _, _ = p
+                id_p, arch, nom_p, int_max, int_rest, _, _, _, _, _, _, _, _ = p
                 with st.expander(f"🎵 {nom_p}"):
                     if int_max == int_rest:
-                        st.write("El Minero aún no ha gastado intentos. Puedes borrarla si la subiste por error.")
+                        st.write(f"{minero_activo} aún no ha gastado intentos. Puedes borrarla si la subiste por error.")
                         if st.button(f"Borrar definitivamente '{nom_p}'", key=f"del_creador_{id_p}"):
                             borrar_prueba_individual(id_p)
                             st.session_state["mensaje_toast"] = f"¡La prueba '{nom_p}' ha sido eliminada!"
                             st.rerun()
                     else:
-                        st.warning(f"No puedes borrar esta prueba porque tu amigo ya ha gastado intentos ({int_rest}/{int_max} restantes).")
+                        st.warning(f"No puedes borrar esta prueba porque {minero_activo} ya ha gastado intentos ({int_rest}/{int_max} restantes).")
 
         st.write("---")
         
-        st.subheader("📝 Pruebas pendientes de corregir")
-        respondidas = obtener_pruebas("Respondido")
+        st.subheader(f"📝 Pruebas pendientes de corregir ({minero_activo})")
+        respondidas = obtener_pruebas("Respondido", destinatario=minero_activo)
         if not respondidas:
-            st.info("No hay respuestas nuevas del Minero por corregir.")
+            st.info(f"No hay respuestas nuevas de {minero_activo} por corregir.")
         else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
             
-            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, foto_a_c = opciones_corregir[seleccion_corregir]
+            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, foto_a_c, _ = opciones_corregir[seleccion_corregir]
             
-            st.warning(f"Justificación del Minero: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
+            st.warning(f"Justificación de {minero_activo}: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
             if foto_b_c:
-                st.write("📷 **Foto-respuesta adjunta por el Minero:**")
+                st.write(f"📷 **Foto-respuesta adjunta por {minero_activo}:**")
                 st.image(foto_b_c, use_container_width=True)
             
             st.write("🎧 **Escucha la progresión para corregir:**")
@@ -484,30 +510,30 @@ else:
                     st.session_state["up_texto_creador"] = str(uuid.uuid4())
                     st.session_state["up_check_correccion"] = str(uuid.uuid4())
                     
-                    st.session_state["mensaje_toast"] = f"¡Calificación de {puntos_dados}/100 enviada correctamente!"
+                    st.session_state["mensaje_toast"] = f"¡Calificación de {puntos_dados}/100 enviada correctamente a {minero_activo}!"
                     st.rerun()
                 else:
                     st.error("Por favor, escribe una justificación o sube una fotografía para poder enviar la corrección.")
 
         st.write("---")
         
-        st.subheader("📚 Historial de pruebas corregidas")
-        corregidas_creador = obtener_pruebas("Corregido")
+        st.subheader(f"📚 Historial de pruebas corregidas ({minero_activo})")
+        corregidas_creador = obtener_pruebas("Corregido", destinatario=minero_activo)
         if not corregidas_creador:
-            st.info("Aún no hay pruebas corregidas en el historial.")
+            st.info(f"Aún no hay pruebas corregidas en el historial de {minero_activo}.")
         else:
             filtro_cat = st.text_input("🔍 Buscar por categoría o título (Ej: Intervalos):", placeholder="Filtra tus pruebas...", key="filtro_creador")
             
             for c in corregidas_creador:
-                id_cor, arch, nom_cor, int_max, int_rest, resp_b, corr_a, punt_cor, est, aud_cor, foto_b, foto_a = c
+                id_cor, arch, nom_cor, int_max, int_rest, resp_b, corr_a, punt_cor, est, aud_cor, foto_b, foto_a, _ = c
                 
                 if filtro_cat and filtro_cat.lower() not in nom_cor.lower():
                     continue
                     
                 with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/100"):
-                    st.write(f"**Justificación del Minero:** {resp_b if resp_b else '*Sin texto*'}")
+                    st.write(f"**Justificación de {minero_activo}:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
-                        st.image(foto_b, caption="Foto-respuesta del Minero", use_container_width=True)
+                        st.image(foto_b, caption=f"Foto-respuesta de {minero_activo}", use_container_width=True)
                     st.write("---")
                     st.info(f"**Tu corrección:** {corr_a if corr_a else '*Sin texto*'}")
                     if foto_a:
@@ -515,11 +541,12 @@ else:
                     st.audio(aud_cor)
 
 
-    # ================= VISTA MINERO (Óscar) =================
-    elif st.session_state["rol"] == "Minero":
-        st.header("🪨 Panel del Minero")
+    # ================= VISTA MINEROS (Minero / Minero 2) =================
+    elif st.session_state["rol"] in ["Minero", "Minero 2"]:
+        minero_actual = st.session_state["rol"]
+        st.header(f"🪨 Panel del Minero ({minero_actual})")
         
-        _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales()
+        _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales(destinatario=minero_actual)
         col1, col2, col3 = st.columns(3)
         col1.metric("Tus Puntos 🏆", f"{puntos_totales} pts")
         col2.metric("Nota Media ⭐", f"{round(nota_media, 2)}/100" if nota_media else "N/A")
@@ -528,12 +555,11 @@ else:
         st.write("---")
         
         st.subheader("🎵 Zonas de Minado (Pruebas disponibles)")
-        pruebas_disp = obtener_pruebas("Pendiente")
+        pruebas_disp = obtener_pruebas("Pendiente", destinatario=minero_actual)
         
         if not pruebas_disp:
             st.info("¡Buen trabajo! No tienes pruebas pendientes de resolver.")
         else:
-            # Ocultar el nombre de la obra en el selector si aún está pendiente
             opciones_pruebas = {}
             for p in pruebas_disp:
                 nombre_mostrado = p[2].split(" | Obra:")[0] if " | Obra:" in p[2] else p[2]
@@ -541,7 +567,7 @@ else:
                 
             seleccion = st.selectbox("Selecciona la prueba:", list(opciones_pruebas.keys()))
             
-            id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, url_audio, _, _ = opciones_pruebas[seleccion]
+            id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, url_audio, _, _, _ = opciones_pruebas[seleccion]
             
             st.write(f"### 📊 Intentos: **{intentos_restantes} / {int_max}**")
             
@@ -602,7 +628,7 @@ else:
                 st.session_state["up_check_minero"] = str(uuid.uuid4())
                 
             foto_respuesta = st.file_uploader("Sube una foto de tu cifrado (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_foto_minero"])
-            respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: El tercer acorde tiene tensión...", key=st.session_state["up_texto_minero"])
+            respuesta_usuario = st.text_input("Justificación (Opcional):", placeholder="Ej: El primer acorde es tónica...", key=st.session_state["up_texto_minero"])
             
             confirmacion_respuesta = st.checkbox("Estoy seguro de que quiero enviar esta respuesta.", key=st.session_state["up_check_minero"])
             
@@ -627,13 +653,13 @@ else:
         st.write("---")
         
         st.subheader("🎒 Historial de prácticas")
-        corregidas = obtener_pruebas("Corregido")
+        corregidas = obtener_pruebas("Corregido", destinatario=minero_actual)
         
         if not corregidas:
             st.info("Aún no tienes pruebas corregidas.")
         else:
             for c in corregidas:
-                id_cor, _, nom_cor, _, _, resp_b, corr_a, punt_cor, _, aud_cor, foto_b, foto_a = c
+                id_cor, _, nom_cor, _, _, resp_b, corr_a, punt_cor, _, aud_cor, foto_b, foto_a, _ = c
                 with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/100"):
                     st.write(f"**Tu respuesta:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
