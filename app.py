@@ -62,7 +62,7 @@ def obtener_pruebas(estado=None, destinatario=None):
             p["url_audio"],
             p["url_foto_respuesta_b"],
             p["url_foto_correccion_a"],
-            p.get("destinatario", "Minero")
+            p.get("destinatario", "Minero 1")
         ))
     return pruebas_tuplas
 
@@ -164,7 +164,7 @@ if "mensaje_toast" in st.session_state:
 # --- PANTALLA DE LOGIN ---
 if st.session_state["rol"] is None:
     st.write("### 🔑 Identifícate para entrar a la mina 🔑")
-    rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Creador", "Minero", "Minero 2", "Administrador"])
+    rol_elegido = st.selectbox("¿Quién eres?", ["Selecciona una opción", "Creador", "Minero 1", "Minero 2", "Administrador"])
     
     if rol_elegido != "Selecciona una opción":
         password = st.text_input("Introduce tu contraseña de acceso:", type="password")
@@ -187,17 +187,32 @@ else:
         st.write(f"Conectado como: **{st.session_state['rol']}**")
         st.write("---")
 
+        # Menú contextual para el Creador
         if st.session_state["rol"] == "Creador":
             if "minero_seleccionado" not in st.session_state:
-                st.session_state["minero_seleccionado"] = "Minero"
+                st.session_state["minero_seleccionado"] = "Minero 1"
             
             st.subheader("🎯 Minero de trabajo")
             minero_sel = st.selectbox(
                 "Gestionar ejercicios para:",
-                ["Minero", "Minero 2"],
-                index=0 if st.session_state["minero_seleccionado"] == "Minero" else 1
+                ["Minero 1", "Minero 2"],
+                index=0 if st.session_state["minero_seleccionado"] == "Minero 1" else 1
             )
             st.session_state["minero_seleccionado"] = minero_sel
+            st.write("---")
+
+        # Menú contextual para el Admin
+        if st.session_state["rol"] == "Admin":
+            if "minero_admin_filtro" not in st.session_state:
+                st.session_state["minero_admin_filtro"] = "Todos"
+            
+            st.subheader("🎯 Filtro de Minero")
+            minero_admin_sel = st.selectbox(
+                "Visualizar datos de:",
+                ["Todos", "Minero 1", "Minero 2"],
+                index=0 if st.session_state["minero_admin_filtro"] == "Todos" else (1 if st.session_state["minero_admin_filtro"] == "Minero 1" else 2)
+            )
+            st.session_state["minero_admin_filtro"] = minero_admin_sel
             st.write("---")
         
         with st.expander("⚙️ Cambiar mi contraseña"):
@@ -214,7 +229,7 @@ else:
                 else:
                     st.error("La contraseña actual no coincide.")
         
-        if st.session_state["rol"] in ["Creador", "Minero", "Minero 2"]:
+        if st.session_state["rol"] in ["Creador", "Minero 1", "Minero 2"]:
             st.write("---")
             with st.expander("📬 Mensaje al Administrador"):
                 st.write("¿Tienes algún problema técnico o sugerencia?")
@@ -234,16 +249,16 @@ else:
 
     # ================= VISTA ADMINISTRADOR =================
     if st.session_state["rol"] == "Admin":
-        st.header("🛡️ Panel de Control del Administrador")
+        admin_filtro = st.session_state.get("minero_admin_filtro", "Todos")
+        dest_filtro = None if admin_filtro == "Todos" else admin_filtro
+        
+        st.header(f"🛡️ Panel de Control del Administrador ({admin_filtro})")
         pest_stats, pest_buzon, pest_anuncios, pest_control, pest_pass, pest_danger = st.tabs([
             "📊 Estadísticas y Audios", "📬 Buzón", "📢 Anuncios", "⚙️ Control", "🔑 Contraseñas", "🚨 Peligro"
         ])
         
         with pest_stats:
-            filtro_admin_minero = st.selectbox("Filtrar métricas por minero:", ["Todos", "Minero", "Minero 2"])
-            dest_filtro = None if filtro_admin_minero == "Todos" else filtro_admin_minero
-            
-            st.subheader("📈 Rendimiento del Juego")
+            st.subheader(f"📈 Rendimiento del Juego — {admin_filtro}")
             total, corregidas, puntos_totales, nota_media, racha = obtener_estadisticas_globales(dest_filtro)
             col_t, col_c, col_p, col_m, col_r = st.columns(5)
             col_t.metric("Pruebas", total)
@@ -257,7 +272,7 @@ else:
             todas_las_pruebas = obtener_pruebas(destinatario=dest_filtro)
             
             if not todas_las_pruebas:
-                st.info("Aún no hay pruebas registradas.")
+                st.info(f"Aún no hay pruebas registradas para {admin_filtro}.")
             else:
                 for p in todas_las_pruebas:
                     id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, url_audio, foto_b, foto_a, dest_p = p
@@ -316,8 +331,8 @@ else:
                     st.rerun()
 
         with pest_control:
-            st.subheader("🛠️ Ajustar Pruebas")
-            todas_control = obtener_pruebas()
+            st.subheader(f"🛠️ Ajustar Pruebas ({admin_filtro})")
+            todas_control = obtener_pruebas(destinatario=dest_filtro)
             if todas_control:
                 opciones_gestion = {f"[{p[12]}] '{p[2]}'": p for p in todas_control}
                 seleccion_gestion = st.selectbox("Selecciona una prueba:", list(opciones_gestion.keys()))
@@ -338,10 +353,12 @@ else:
                         borrar_prueba_individual(id_g)
                         st.session_state["mensaje_toast"] = "¡Prueba eliminada!"
                         st.rerun()
+            else:
+                st.info(f"No hay pruebas registradas bajo el filtro {admin_filtro}.")
 
         with pest_pass:
-            st.write(f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero:** `{obtener_password('Minero')}` | 🔑 **Minero 2:** `{obtener_password('Minero 2')}`")
-            usuario_a_modificar = st.selectbox("Selecciona usuario:", ["Creador", "Minero", "Minero 2", "Admin"])
+            st.write(f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero 1:** `{obtener_password('Minero 1')}` | 🔑 **Minero 2:** `{obtener_password('Minero 2')}`")
+            usuario_a_modificar = st.selectbox("Selecciona usuario:", ["Creador", "Minero 1", "Minero 2", "Admin"])
             pass_nueva_admin = st.text_input("Nueva contraseña:", type="password")
             if st.button("Forzar cambio"):
                 actualizar_password(usuario_a_modificar, pass_nueva_admin)
@@ -357,7 +374,7 @@ else:
 
     # ================= VISTA CREADOR =================
     elif st.session_state["rol"] == "Creador":
-        minero_activo = st.session_state.get("minero_seleccionado", "Minero")
+        minero_activo = st.session_state.get("minero_seleccionado", "Minero 1")
         st.header(f"🎼 Panel del Creador — {minero_activo}")
         
         st.subheader(f"📤 Subir nueva prueba para {minero_activo}")
@@ -541,8 +558,8 @@ else:
                     st.audio(aud_cor)
 
 
-    # ================= VISTA MINEROS (Minero / Minero 2) =================
-    elif st.session_state["rol"] in ["Minero", "Minero 2"]:
+    # ================= VISTA MINEROS (Minero 1 / Minero 2) =================
+    elif st.session_state["rol"] in ["Minero 1", "Minero 2"]:
         minero_actual = st.session_state["rol"]
         st.header(f"🪨 Panel del Minero ({minero_actual})")
         
