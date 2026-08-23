@@ -351,7 +351,6 @@ else:
             if "up_obra_creador" not in st.session_state:
                 st.session_state["up_obra_creador"] = str(uuid.uuid4())
             nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Claro de Luna - Beethoven", key=st.session_state["up_obra_creador"])
-            st.caption("ℹ️ *El Minero solo verá este nombre tras resolver la prueba.*")
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
