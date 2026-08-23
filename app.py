@@ -350,7 +350,7 @@ else:
         if categoria_elegida == "Fragmentos":
             if "up_obra_creador" not in st.session_state:
                 st.session_state["up_obra_creador"] = str(uuid.uuid4())
-            nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Claro de Luna - Beethoven", key=st.session_state["up_obra_creador"])
+            nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Quinteto con piano en do mayor - Medtner", key=st.session_state["up_obra_creador"])
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
