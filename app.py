@@ -344,7 +344,7 @@ else:
         nombre_personalizado_input = st.text_input("Nombre de la prueba (Opcional):", key=st.session_state["up_nombre_creador"])
         st.caption("ℹ️ *Si dejas este campo vacío, la prueba se nombrará automáticamente con la fecha de hoy.*")
         
-        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Acordes", "Ritmo", "Dictado"])
+        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
         
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
