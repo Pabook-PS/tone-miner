@@ -62,7 +62,8 @@ def obtener_pruebas(estado=None, destinatario=None):
             p["url_audio"],
             p["url_foto_respuesta_b"],
             p["url_foto_correccion_a"],
-            p.get("destinatario", "Minero 1")
+            p.get("destinatario", "Minero 1"),
+            p.get("indicaciones")
         ))
     return pruebas_tuplas
 
@@ -275,13 +276,15 @@ else:
                 st.info(f"Aún no hay pruebas registradas para {admin_filtro}.")
             else:
                 for p in todas_las_pruebas:
-                    id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, url_audio, foto_b, foto_a, dest_p = p
+                    id_p, arch, nom_p, int_max, int_rest, resp_b, corr_a, punt, est, url_audio, foto_b, foto_a, dest_p, indic_p = p
                     color = "🟡" if est == "Pendiente" else "🟠" if est == "Respondido" else "🟢"
                     
                     titulo = f"{color} [{dest_p}] '{nom_p}' (Archivo: {arch})"
                     with st.expander(f"{titulo} - [{est}]"):
                         st.write(f"**Destinatario:** {dest_p}")
-                        st.write(f"**Intentos:** {int_rest}/{int_max}")
+                        st.write(f"**Intentos restantes:** {int_rest}/{int_max} (Gastados: {int_max - int_rest})")
+                        if indic_p:
+                            st.info(f"💡 **Indicaciones:** {indic_p}")
                         st.write(f"**Justificación de B:** {resp_b if resp_b else '*Sin responder*'}")
                         if foto_b:
                             st.image(foto_b, caption=f"Foto-respuesta subida por {dest_p}", use_container_width=True)
@@ -337,7 +340,7 @@ else:
                 opciones_gestion = {f"[{p[12]}] '{p[2]}'": p for p in todas_control}
                 seleccion_gestion = st.selectbox("Selecciona una prueba:", list(opciones_gestion.keys()))
                 prueba_g = opciones_gestion[seleccion_gestion]
-                id_g, _, nom_g, int_max_g, int_rest_g, _, _, _, _, _, _, _, _ = prueba_g
+                id_g, _, nom_g, int_max_g, int_rest_g, _, _, _, _, _, _, _, _, _ = prueba_g
                 
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
@@ -396,6 +399,17 @@ else:
             nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Quinteto con piano en do mayor - Medtner", key=st.session_state["up_obra_creador"])
             st.caption(f"ℹ️ *{minero_activo} solo verá este nombre tras resolver la prueba.*")
 
+        if "up_check_indic_creador" not in st.session_state:
+            st.session_state["up_check_indic_creador"] = str(uuid.uuid4())
+        mostrar_campo_indic = st.checkbox("Indicaciones para el ejercicio", key=st.session_state["up_check_indic_creador"])
+        
+        indicaciones_input = ""
+        if mostrar_campo_indic:
+            if "up_indic_creador" not in st.session_state:
+                st.session_state["up_indic_creador"] = str(uuid.uuid4())
+            indicaciones_input = st.text_area("Indicaciones / Pistas para el Minero:", placeholder="Ej: Fíjate bien en el bajo a partir del compás 3...", key=st.session_state["up_indic_creador"])
+            st.caption(f"ℹ️ *{minero_activo} podrá leer estas indicaciones mientras resuelve el ejercicio.*")
+
         categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
 
         if "up_audio_creador" not in st.session_state:
@@ -442,6 +456,7 @@ else:
                     "nombre_personalizado": nombre_final,
                     "url_audio": url_audio,
                     "url_foto_correccion_a": url_foto_solucion,
+                    "indicaciones": indicaciones_input.strip() if mostrar_campo_indic and indicaciones_input.strip() else None,
                     "intentos_maximos": intentos,
                     "intentos_restantes": intentos,
                     "estado": "Pendiente",
@@ -453,8 +468,11 @@ else:
                 st.session_state["up_solucion_creador"] = str(uuid.uuid4())
                 st.session_state["up_nombre_creador"] = str(uuid.uuid4())
                 st.session_state["up_check_obra_creador"] = str(uuid.uuid4())
+                st.session_state["up_check_indic_creador"] = str(uuid.uuid4())
                 if "up_obra_creador" in st.session_state:
                     st.session_state["up_obra_creador"] = str(uuid.uuid4())
+                if "up_indic_creador" in st.session_state:
+                    st.session_state["up_indic_creador"] = str(uuid.uuid4())
                 st.session_state["up_check_creador"] = str(uuid.uuid4())
                 
                 st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido asignada a {minero_activo}!"
@@ -470,8 +488,10 @@ else:
             st.info(f"No hay pruebas pendientes de resolver para {minero_activo}.")
         else:
             for p in pendientes:
-                id_p, arch, nom_p, int_max, int_rest, _, _, _, _, _, _, _, _ = p
+                id_p, arch, nom_p, int_max, int_rest, _, _, _, _, _, _, _, _, indic_p = p
                 with st.expander(f"🎵 {nom_p}"):
+                    if indic_p:
+                        st.info(f"💡 **Indicaciones asociadas:** {indic_p}")
                     if int_max == int_rest:
                         st.write(f"{minero_activo} aún no ha gastado intentos. Puedes borrarla si la subiste por error.")
                         if st.button(f"Borrar definitivamente '{nom_p}'", key=f"del_creador_{id_p}"):
@@ -491,7 +511,11 @@ else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
             
-            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, foto_a_c, _ = opciones_corregir[seleccion_corregir]
+            id_c, _, nom_c, int_max_c, int_rest_c, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, foto_a_c, _, indic_c = opciones_corregir[seleccion_corregir]
+            
+            st.write(f"📊 **Intentos gastados por el minero:** {int_max_c - int_rest_c} de {int_max_c}")
+            if indic_c:
+                st.info(f"💡 **Indicaciones que tuvo el alumno:** {indic_c}")
             
             st.warning(f"Justificación de {minero_activo}: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
@@ -547,12 +571,16 @@ else:
             filtro_cat = st.text_input("🔍 Buscar por categoría o título (Ej: Intervalos):", placeholder="Filtra tus pruebas...", key="filtro_creador")
             
             for c in corregidas_creador:
-                id_cor, arch, nom_cor, int_max, int_rest, resp_b, corr_a, punt_cor, est, aud_cor, foto_b, foto_a, _ = c
+                id_cor, arch, nom_cor, int_max, int_rest, resp_b, corr_a, punt_cor, est, aud_cor, foto_b, foto_a, _, indic_cor = c
                 
                 if filtro_cat and filtro_cat.lower() not in nom_cor.lower():
                     continue
                     
+                intentos_gastados = int_max - int_rest
                 with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/100"):
+                    st.write(f"📊 **Intentos gastados:** {intentos_gastados} de {int_max}")
+                    if indic_cor:
+                        st.info(f"💡 **Indicaciones proporcionadas:** {indic_cor}")
                     st.write(f"**Justificación de {minero_activo}:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
                         st.image(foto_b, caption=f"Foto-respuesta de {minero_activo}", use_container_width=True)
@@ -589,9 +617,12 @@ else:
                 
             seleccion = st.selectbox("Selecciona la prueba:", list(opciones_pruebas.keys()))
             
-            id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, url_audio, _, _, _ = opciones_pruebas[seleccion]
+            id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, url_audio, _, _, _, indic_activa = opciones_pruebas[seleccion]
             
             st.write(f"### 📊 Intentos: **{intentos_restantes} / {int_max}**")
+            
+            if indic_activa:
+                st.info(f"💡 **Indicaciones del ejercicio:**\n\n{indic_activa}")
             
             llave = f"reproducir_{id_prueba}"
             if llave not in st.session_state:
@@ -681,8 +712,10 @@ else:
             st.info("Aún no tienes pruebas corregidas.")
         else:
             for c in corregidas:
-                id_cor, _, nom_cor, _, _, resp_b, corr_a, punt_cor, _, aud_cor, foto_b, foto_a, _ = c
+                id_cor, _, nom_cor, _, _, resp_b, corr_a, punt_cor, _, aud_cor, foto_b, foto_a, _, indic_cor = c
                 with st.expander(f"🎵 {nom_cor} — ⭐ Nota: {punt_cor}/100"):
+                    if indic_cor:
+                        st.info(f"💡 **Indicaciones recibidas:** {indic_cor}")
                     st.write(f"**Tu respuesta:** {resp_b if resp_b else '*Sin texto*'}")
                     if foto_b:
                         st.image(foto_b, caption="Tu foto-respuesta enviada", use_container_width=True)
