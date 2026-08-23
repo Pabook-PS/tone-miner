@@ -346,6 +346,13 @@ else:
         
         categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
         
+        nombre_obra_input = ""
+        if categoria_elegida == "Fragmentos":
+            if "up_obra_creador" not in st.session_state:
+                st.session_state["up_obra_creador"] = str(uuid.uuid4())
+            nombre_obra_input = st.text_input("Nombre de la obra musical del fragmento:", placeholder="Ej: Claro de Luna - Beethoven", key=st.session_state["up_obra_creador"])
+            st.caption("ℹ️ *El Minero solo verá este nombre tras resolver la prueba.*")
+
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
             
@@ -374,6 +381,9 @@ else:
                 
                 if categoria_elegida != "Ninguna":
                     nombre_final = f"[{categoria_elegida}] {nombre_final}"
+                    
+                if categoria_elegida == "Fragmentos" and nombre_obra_input.strip():
+                    nombre_final = f"{nombre_final} | Obra: {nombre_obra_input.strip()}"
                 
                 url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audio", archivo_subido.type)
                 
@@ -396,6 +406,8 @@ else:
                 st.session_state["up_audio_creador"] = str(uuid.uuid4())
                 st.session_state["up_solucion_creador"] = str(uuid.uuid4())
                 st.session_state["up_nombre_creador"] = str(uuid.uuid4())
+                if "up_obra_creador" in st.session_state:
+                    st.session_state["up_obra_creador"] = str(uuid.uuid4())
                 st.session_state["up_check_creador"] = str(uuid.uuid4())
                 
                 st.session_state["mensaje_toast"] = f"¡La prueba '{nombre_final}' ha sido subida correctamente!"
@@ -522,7 +534,12 @@ else:
         if not pruebas_disp:
             st.info("¡Buen trabajo! No tienes pruebas pendientes de resolver.")
         else:
-            opciones_pruebas = {f"'{p[2]}'": p for p in pruebas_disp}
+            # Ocultar el nombre de la obra en el selector si aún está pendiente
+            opciones_pruebas = {}
+            for p in pruebas_disp:
+                nombre_mostrado = p[2].split(" | Obra:")[0] if " | Obra:" in p[2] else p[2]
+                opciones_pruebas[f"'{nombre_mostrado}'"] = p
+                
             seleccion = st.selectbox("Selecciona la prueba:", list(opciones_pruebas.keys()))
             
             id_prueba, _, nom_p, int_max, intentos_restantes, _, _, _, _, url_audio, _, _ = opciones_pruebas[seleccion]
