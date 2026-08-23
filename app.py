@@ -350,6 +350,11 @@ else:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
             
         archivo_subido = st.file_uploader("Elige el audio (.mp3, .wav, .acc)", type=["mp3", "wav", "acc"], key=st.session_state["up_audio_creador"])
+        
+        if "up_solucion_creador" not in st.session_state:
+            st.session_state["up_solucion_creador"] = str(uuid.uuid4())
+        foto_solucion_subida = st.file_uploader("Sube la foto con la solución (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_solucion_creador"])
+        
         intentos = st.number_input("¿Cuántos intentos de escucha tiene?", min_value=1, max_value=10, value=3)
         
         if "up_check_creador" not in st.session_state:
@@ -372,10 +377,16 @@ else:
                 
                 url_audio = subir_archivo_storage(bytes_audio, nombre_archivo, "audio", archivo_subido.type)
                 
+                url_foto_solucion = None
+                if foto_solucion_subida is not None:
+                    bytes_solucion = foto_solucion_subida.read()
+                    url_foto_solucion = subir_archivo_storage(bytes_solucion, foto_solucion_subida.name, "foto_a", foto_solucion_subida.type)
+                
                 supabase.table("pruebas").insert({
                     "nombre_archivo": nombre_archivo,
                     "nombre_personalizado": nombre_final,
                     "url_audio": url_audio,
+                    "url_foto_correccion_a": url_foto_solucion,
                     "intentos_maximos": intentos,
                     "intentos_restantes": intentos,
                     "estado": "Pendiente"
@@ -383,6 +394,7 @@ else:
                 
                 # Limpia los campos y la casilla
                 st.session_state["up_audio_creador"] = str(uuid.uuid4())
+                st.session_state["up_solucion_creador"] = str(uuid.uuid4())
                 st.session_state["up_nombre_creador"] = str(uuid.uuid4())
                 st.session_state["up_check_creador"] = str(uuid.uuid4())
                 
@@ -420,7 +432,7 @@ else:
             opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
             seleccion_corregir = st.selectbox("Selecciona qué respuesta quieres revisar:", list(opciones_corregir.keys()))
             
-            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, _ = opciones_corregir[seleccion_corregir]
+            id_c, _, nom_c, _, _, respuesta_b_c, _, _, _, url_audio_c, foto_b_c, foto_a_c = opciones_corregir[seleccion_corregir]
             
             st.warning(f"Justificación del Minero: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**")
             
@@ -430,6 +442,10 @@ else:
             
             st.write("🎧 **Escucha la progresión para corregir:**")
             st.audio(url_audio_c)
+
+            if foto_a_c:
+                st.write("📷 **Foto de solución subida previamente con la prueba:**")
+                st.image(foto_a_c, use_container_width=True)
             
             st.write("### 📝 Califica la prueba")
             
@@ -440,14 +456,14 @@ else:
             if "up_check_correccion" not in st.session_state:
                 st.session_state["up_check_correccion"] = str(uuid.uuid4())
                 
-            foto_creador = st.file_uploader("Sube una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_foto_creador"])
+            foto_creador = st.file_uploader("Sube/Actualiza una foto con la solución (Opcional):", type=["png", "jpg", "jpeg"], key=st.session_state["up_foto_creador"])
             feedback = st.text_area("Justificación (Opcional):", placeholder="Ej: ¡Buen trabajo! Pero hay que picar más piedra...", key=st.session_state["up_texto_creador"])
             puntos_dados = st.slider("Asigna una puntuación:", min_value=0, max_value=100, value=0)
             
             confirmacion_correccion = st.checkbox("Confirmo que la corrección y la nota son definitivas.", key=st.session_state["up_check_correccion"])
             
             if st.button("Enviar Corrección", disabled=not confirmacion_correccion):
-                if feedback.strip() or foto_creador is not None:
+                if feedback.strip() or foto_creador is not None or foto_a_c is not None:
                     bytes_foto_creador = foto_creador.read() if foto_creador is not None else None
                     nombre_f = foto_creador.name if foto_creador is not None else "foto.jpg"
                     guardar_correccion_a_con_foto(id_c, feedback.strip(), puntos_dados, bytes_foto_creador, nombre_f)
