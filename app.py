@@ -14,8 +14,6 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-CATEGORIAS_OFICIALES = ["Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"]
-
 # --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
 def subir_archivo_storage(bytes_file, nombre_original, subcarpeta, content_type):
     """Sube un archivo al bucket 'audios' dentro de una subcarpeta organizada y devuelve su URL pública"""
@@ -41,6 +39,18 @@ def obtener_password(rol):
 
 def actualizar_password(rol, nueva_pass):
     supabase.table("usuarios").update({"password": nueva_pass}).eq("rol", rol).execute()
+
+def obtener_categorias():
+    res = supabase.table("categorias").select("nombre").order("id", desc=False).execute()
+    if res.data:
+        return [c["nombre"] for c in res.data]
+    return ["Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado", "Acordes"]
+
+def agregar_categoria(nombre):
+    supabase.table("categorias").insert({"nombre": nombre.strip()}).execute()
+
+def eliminar_categoria(nombre):
+    supabase.table("categorias").delete().eq("nombre", nombre).execute()
 
 def obtener_pruebas(estado=None, destinatario=None):
     query = supabase.table("pruebas").select("*").order("id", desc=False)
@@ -143,13 +153,13 @@ def obtener_estadisticas_globales(destinatario=None):
     puntos_totales = sum([p["puntuacion"] for p in corregidas_list if p["puntuacion"] is not None])
     nota_media = (puntos_totales / corregidas) if corregidas > 0 else None
     
-    # Cálculo de medias por categoría para el gráfico de radar
-    stats_cat = {cat: [] for cat in CATEGORIAS_OFICIALES}
+    categorias_bd = obtener_categorias()
+    stats_cat = {cat: [] for cat in categorias_bd}
     for p in corregidas_list:
         nom = p.get("nombre_personalizado", "")
         punt = p.get("puntuacion")
         if punt is not None:
-            for cat in CATEGORIAS_OFICIALES:
+            for cat in categorias_bd:
                 if f"[{cat}]" in nom:
                     stats_cat[cat].append(punt)
                     break
@@ -160,9 +170,12 @@ def obtener_estadisticas_globales(destinatario=None):
 
 def generar_grafico_radar(medias_dict):
     categorias = list(medias_dict.keys())
+    if not categorias:
+        return go.Figure()
+        
     valores = [round(medias_dict[c], 1) for c in categorias]
     
-    # Cerrar el polígono
+    # Cerrar la figura conectando el último punto con el primero
     categorias_cerradas = categorias + [categorias[0]]
     valores_cerrados = valores + [valores[0]]
     
@@ -171,10 +184,10 @@ def generar_grafico_radar(medias_dict):
         r=valores_cerrados,
         theta=categorias_cerradas,
         fill='toself',
-        fillcolor='rgba(255, 75, 75, 0.4)',
-        line=dict(color='#FF4B4B', width=2),
-        marker=dict(color='#FFFFFF', size=6),
-        name='Estadísticas'
+        fillcolor='rgba(255, 75, 75, 0.45)',
+        line=dict(color='#FF4B4B', width=2.5),
+        marker=dict(color='#FFFFFF', size=7),
+        name='Media de notas'
     ))
     
     fig.update_layout(
@@ -183,18 +196,21 @@ def generar_grafico_radar(medias_dict):
                 visible=True,
                 range=[0, 100],
                 tickfont=dict(size=10, color="#888"),
-                gridcolor="#333"
+                gridcolor="#333",
+                linecolor="#333"
             ),
             angularaxis=dict(
                 tickfont=dict(size=13, color="#FFF", family="sans-serif"),
-                gridcolor="#333"
+                gridcolor="#333",
+                linecolor="#333"
             ),
+            gridshape='polygon',
             bgcolor="rgba(0,0,0,0)"
         ),
         paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=35, r=35, t=25, b=25),
+        margin=dict(l=40, r=40, t=30, b=30),
         showlegend=False,
-        height=320
+        height=340
     )
     return fig
 
@@ -302,8 +318,8 @@ else:
         dest_filtro = None if admin_filtro == "Todos" else admin_filtro
         
         st.header(f"🛡️ Panel de Control del Administrador ({admin_filtro})")
-        pest_stats, pest_buzon, pest_anuncios, pest_control, pest_pass, pest_danger = st.tabs([
-            "📊 Estadísticas y Audios", "📬 Buzón", "📢 Anuncios", "⚙️ Control", "🔑 Contraseñas", "🚨 Peligro"
+        pest_stats, pest_buzon, pest_anuncios, pest_control, pest_cats, pest_pass, pest_danger = st.tabs([
+            "📊 Estadísticas y Audios", "📬 Buzón", "📢 Anuncios", "⚙️ Control", "🏷️ Categorías", "🔑 Contraseñas", "🚨 Peligro"
         ])
         
         with pest_stats:
@@ -409,6 +425,31 @@ else:
             else:
                 st.info(f"No hay pruebas registradas bajo el filtro {admin_filtro}.")
 
+        with pest_cats:
+            st.subheader("🏷️ Gestión de Categorías")
+            cats_actuales = obtener_categorias()
+            st.write(f"Categorías activas actualmente: **{', '.join(cats_actuales)}**")
+            
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                st.write("➕ **Añadir nueva categoría**")
+                nueva_cat = st.text_input("Nombre de la categoría:", placeholder="Ej: Ritmo, Modos...", key="input_nueva_cat")
+                if st.button("Añadir categoría"):
+                    if nueva_cat.strip() and nueva_cat.strip() not in cats_actuales:
+                        agregar_categoria(nueva_cat.strip())
+                        st.session_state["mensaje_toast"] = f"¡Categoría '{nueva_cat.strip()}' añadida!"
+                        st.rerun()
+                    else:
+                        st.error("Escribe un nombre válido y que no exista.")
+            
+            with col_c2:
+                st.write("🗑️ **Eliminar categoría**")
+                cat_a_borrar = st.selectbox("Selecciona categoría para eliminar:", cats_actuales, key="sel_del_cat")
+                if st.button("Eliminar categoría"):
+                    eliminar_categoria(cat_a_borrar)
+                    st.session_state["mensaje_toast"] = f"¡Categoría '{cat_a_borrar}' eliminada!"
+                    st.rerun()
+
         with pest_pass:
             st.write(f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero 1:** `{obtener_password('Minero 1')}` | 🔑 **Minero 2:** `{obtener_password('Minero 2')}`")
             usuario_a_modificar = st.selectbox("Selecciona usuario:", ["Creador", "Minero 1", "Minero 2", "Admin"])
@@ -429,6 +470,16 @@ else:
     elif st.session_state["rol"] == "Creador":
         minero_activo = st.session_state.get("minero_seleccionado", "Minero 1")
         st.header(f"🎼 Panel del Creador — {minero_activo}")
+        
+        with st.expander(f"📊 Ver radar y estadísticas de {minero_activo}"):
+            _, corregidas_c, puntos_c, media_c, radar_c = obtener_estadisticas_globales(destinatario=minero_activo)
+            col_cr1, col_cr2, col_cr3 = st.columns(3)
+            col_cr1.metric("Completadas", corregidas_c)
+            col_cr2.metric("Puntos", f"{puntos_c} pts")
+            col_cr3.metric("Media", f"{round(media_c, 2)}/100" if media_c else "N/A")
+            st.plotly_chart(generar_grafico_radar(radar_c), use_container_width=True)
+            
+        st.write("---")
         
         st.subheader(f"📤 Subir nueva prueba para {minero_activo}")
         
@@ -460,7 +511,8 @@ else:
             indicaciones_input = st.text_area("Indicaciones / Pistas para el Minero:", placeholder="Ej: Fíjate bien en el bajo a partir del compás 3...", key=st.session_state["up_indic_creador"])
             st.caption(f"ℹ️ *{minero_activo} podrá leer estas indicaciones mientras resuelve el ejercicio.*")
 
-        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
+        lista_categorias_disp = ["Ninguna"] + obtener_categorias()
+        categoria_elegida = st.selectbox("Categoría del ejercicio:", lista_categorias_disp)
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
@@ -650,7 +702,7 @@ else:
         col1, col2, col3 = st.columns(3)
         col1.metric("Tus Puntos 🏆", f"{puntos_totales} pts")
         col2.metric("Nota Media ⭐", f"{round(nota_media, 2)}/100" if nota_media else "N/A")
-        col3.metric("Evaluaciones 📝", f"{sum([1 for v in medias_radar.values() if v > 0])} categorías activas")
+        col3.metric("Evaluaciones 📝", f"{sum([1 for v in medias_radar.values() if v > 0])} activas")
         
         st.write("")
         st.plotly_chart(generar_grafico_radar(medias_radar), use_container_width=True)
