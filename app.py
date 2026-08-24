@@ -410,7 +410,7 @@ else:
             indicaciones_input = st.text_area("Indicaciones / Pistas para el Minero:", placeholder="Ej: Fíjate bien en el bajo a partir del compás 3...", key=st.session_state["up_indic_creador"])
             st.caption(f"ℹ️ *{minero_activo} podrá leer estas indicaciones mientras resuelve el ejercicio.*")
 
-        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
+        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Acordes", "Escalas", "Dictado"])
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
