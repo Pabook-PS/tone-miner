@@ -175,7 +175,7 @@ def generar_grafico_radar(medias_dict):
         
     valores = [round(medias_dict[c], 1) for c in categorias]
     
-    # Cerrar la figura conectando el último punto con el primero
+    # Cerrar la figura poligonal conectando el último vértice con el primero
     categorias_cerradas = categorias + [categorias[0]]
     valores_cerrados = valores + [valores[0]]
     
@@ -197,14 +197,14 @@ def generar_grafico_radar(medias_dict):
                 range=[0, 100],
                 tickfont=dict(size=10, color="#888"),
                 gridcolor="#333",
-                linecolor="#333"
+                linecolor="#333",
+                gridshape='polygon'
             ),
             angularaxis=dict(
                 tickfont=dict(size=13, color="#FFF", family="sans-serif"),
                 gridcolor="#333",
                 linecolor="#333"
             ),
-            gridshape='polygon',
             bgcolor="rgba(0,0,0,0)"
         ),
         paper_bgcolor="rgba(0,0,0,0)",
