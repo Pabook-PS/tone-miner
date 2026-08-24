@@ -48,14 +48,17 @@ def actualizar_password(rol, nueva_pass):
 
 
 def obtener_categorias():
-  res = (
-      supabase.table("categorias")
-      .select("nombre")
-      .order("id", desc=False)
-      .execute()
-  )
-  if res.data:
-    return [c["nombre"] for c in res.data]
+  try:
+    res = (
+        supabase.table("categorias")
+        .select("nombre")
+        .order("id", desc=False)
+        .execute()
+    )
+    if res.data and len(res.data) > 0:
+      return [c["nombre"] for c in res.data]
+  except Exception:
+    pass
   return [
       "Intervalos",
       "Progresiones",
@@ -67,11 +70,21 @@ def obtener_categorias():
 
 
 def agregar_categoria(nombre):
-  supabase.table("categorias").insert({"nombre": nombre.strip()}).execute()
+  try:
+    supabase.table("categorias").insert({"nombre": nombre.strip()}).execute()
+    return True
+  except Exception as e:
+    st.error(f"Error al añadir categoría: {e}")
+    return False
 
 
 def eliminar_categoria(nombre):
-  supabase.table("categorias").delete().eq("nombre", nombre).execute()
+  try:
+    supabase.table("categorias").delete().eq("nombre", nombre).execute()
+    return True
+  except Exception as e:
+    st.error(f"Error al eliminar categoría: {e}")
+    return False
 
 
 def obtener_pruebas(estado=None, destinatario=None):
@@ -254,7 +267,6 @@ def generar_grafico_radar(medias_dict):
 
   valores = [round(float(medias_dict[c]), 1) for c in categorias]
 
-  # Cerrar la figura conectando el último punto con el primero
   categorias_cerradas = categorias + [categorias[0]]
   valores_cerrados = valores + [valores[0]]
 
@@ -623,11 +635,11 @@ else:
         )
         if st.button("Añadir categoría"):
           if nueva_cat.strip() and nueva_cat.strip() not in cats_actuales:
-            agregar_categoria(nueva_cat.strip())
-            st.session_state["mensaje_toast"] = (
-                f"¡Categoría '{nueva_cat.strip()}' añadida!"
-            )
-            st.rerun()
+            if agregar_categoria(nueva_cat.strip()):
+              st.session_state["mensaje_toast"] = (
+                  f"¡Categoría '{nueva_cat.strip()}' añadida!"
+              )
+              st.rerun()
           else:
             st.error("Escribe un nombre válido y que no exista.")
 
@@ -639,11 +651,11 @@ else:
             key="sel_del_cat",
         )
         if st.button("Eliminar categoría"):
-          eliminar_categoria(cat_a_borrar)
-          st.session_state["mensaje_toast"] = (
-              f"¡Categoría '{cat_a_borrar}' eliminada!"
-          )
-          st.rerun()
+          if eliminar_categoria(cat_a_borrar):
+            st.session_state["mensaje_toast"] = (
+                f"¡Categoría '{cat_a_borrar}' eliminada!"
+            )
+            st.rerun()
 
     with pest_pass:
       st.write(
