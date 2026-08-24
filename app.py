@@ -442,7 +442,6 @@ else:
         pest_buzon,
         pest_anuncios,
         pest_control,
-        pest_cats,
         pest_pass,
         pest_danger,
     ) = st.tabs([
@@ -450,7 +449,6 @@ else:
         "📬 Buzón",
         "📢 Anuncios",
         "⚙️ Control",
-        "🏷️ Categorías",
         "🔑 Contraseñas",
         "🚨 Peligro",
     ])
@@ -620,7 +618,7 @@ else:
       else:
         st.info(f"No hay pruebas registradas bajo el filtro {admin_filtro}.")
 
-    with pest_cats:
+      st.write("---")
       st.subheader("🏷️ Gestión de Categorías")
       cats_actuales = obtener_categorias()
       st.write(f"Categorías activas actualmente: **{', '.join(cats_actuales)}**")
