@@ -14,6 +14,15 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# --- MAPEO VISUAL DE NOMBRES ---
+NOMBRE_MINERO = {
+    "Minero 1": "Minero Óscar",
+    "Minero 2": "Minero Pablo"
+}
+
+def formatear_nombre_minero(rol_db):
+  return NOMBRE_MINERO.get(rol_db, rol_db)
+
 
 # --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
 def subir_archivo_storage(bytes_file, nombre_original, subcarpeta, content_type):
@@ -319,10 +328,8 @@ if "mensaje_toast" in st.session_state:
 # --- PANTALLA DE LOGIN ---
 if st.session_state["rol"] is None:
   st.write("### 🔑 Identifícate para entrar a la mina 🔑")
-  rol_elegido = st.selectbox(
-      "¿Quién eres?",
-      ["Selecciona una opción", "Creador", "Minero 1", "Minero 2", "Administrador"],
-  )
+  opciones_roles = ["Selecciona una opción", "Creador", "Minero Óscar", "Minero Pablo", "Administrador"]
+  rol_elegido = st.selectbox("¿Quién eres?", opciones_roles)
 
   if rol_elegido != "Selecciona una opción":
     password = st.text_input("Introduce tu contraseña de acceso:", type="password")
@@ -332,11 +339,13 @@ if st.session_state["rol"] is None:
           if rol_elegido == "Creador"
           else "Admin"
           if rol_elegido == "Administrador"
-          else rol_elegido
+          else "Minero 1"
+          if rol_elegido == "Minero Óscar"
+          else "Minero 2"
       )
       if password == obtener_password(rol_db):
         st.session_state["rol"] = rol_db
-        st.session_state["mensaje_toast"] = f"¡Acceso concedido como {rol_db}!"
+        st.session_state["mensaje_toast"] = f"¡Acceso concedido como {formatear_nombre_minero(rol_db)}!"
         st.rerun()
       else:
         st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
@@ -348,7 +357,7 @@ else:
     st.info(f"📢 **Anuncio de la Mina:** {anuncio_actual}")
 
   with st.sidebar:
-    st.write(f"Conectado como: **{st.session_state['rol']}**")
+    st.write(f"Conectado como: **{formatear_nombre_minero(st.session_state['rol'])}**")
     st.write("---")
 
     # Menú contextual para el Creador
@@ -357,14 +366,15 @@ else:
         st.session_state["minero_seleccionado"] = "Minero 1"
 
       st.subheader("🎯 Minero de trabajo")
-      minero_sel = st.selectbox(
+      minero_opciones_visibles = ["Minero Óscar", "Minero Pablo"]
+      minero_sel_visual = st.selectbox(
           "Gestionar ejercicios para:",
-          ["Minero 1", "Minero 2"],
+          minero_opciones_visibles,
           index=0
           if st.session_state["minero_seleccionado"] == "Minero 1"
           else 1,
       )
-      st.session_state["minero_seleccionado"] = minero_sel
+      st.session_state["minero_seleccionado"] = "Minero 1" if minero_sel_visual == "Minero Óscar" else "Minero 2"
       st.write("---")
 
     # Menú contextual para el Admin
@@ -373,18 +383,14 @@ else:
         st.session_state["minero_admin_filtro"] = "Todos"
 
       st.subheader("🎯 Filtro de Minero")
-      minero_admin_sel = st.selectbox(
+      admin_opciones_visibles = ["Todos", "Minero Óscar", "Minero Pablo"]
+      index_actual = 0 if st.session_state["minero_admin_filtro"] == "Todos" else (1 if st.session_state["minero_admin_filtro"] == "Minero 1" else 2)
+      minero_admin_sel_visual = st.selectbox(
           "Visualizar datos de:",
-          ["Todos", "Minero 1", "Minero 2"],
-          index=0
-          if st.session_state["minero_admin_filtro"] == "Todos"
-          else (
-              1
-              if st.session_state["minero_admin_filtro"] == "Minero 1"
-              else 2
-          ),
+          admin_opciones_visibles,
+          index=index_actual,
       )
-      st.session_state["minero_admin_filtro"] = minero_admin_sel
+      st.session_state["minero_admin_filtro"] = "Todos" if minero_admin_sel_visual == "Todos" else ("Minero 1" if minero_admin_sel_visual == "Minero Óscar" else "Minero 2")
       st.write("---")
 
     with st.expander("⚙️ Cambiar mi contraseña"):
@@ -435,8 +441,9 @@ else:
   if st.session_state["rol"] == "Admin":
     admin_filtro = st.session_state.get("minero_admin_filtro", "Todos")
     dest_filtro = None if admin_filtro == "Todos" else admin_filtro
+    admin_filtro_visual = formatear_nombre_minero(admin_filtro)
 
-    st.header(f"🛡️ Panel de Control del Administrador ({admin_filtro})")
+    st.header(f"🛡️ Panel de Control del Administrador ({admin_filtro_visual})")
     (
         pest_stats,
         pest_buzon,
@@ -454,7 +461,7 @@ else:
     ])
 
     with pest_stats:
-      st.subheader(f"📈 Rendimiento del Juego — {admin_filtro}")
+      st.subheader(f"📈 Rendimiento del Juego — {admin_filtro_visual}")
       total, corregidas, puntos_totales, nota_media, medias_radar = (
           obtener_estadisticas_globales(dest_filtro)
       )
@@ -476,7 +483,7 @@ else:
       todas_las_pruebas = obtener_pruebas(destinatario=dest_filtro)
 
       if not todas_las_pruebas:
-        st.info(f"Aún no hay pruebas registradas para {admin_filtro}.")
+        st.info(f"Aún no hay pruebas registradas para {admin_filtro_visual}.")
       else:
         for p in todas_las_pruebas:
           (
@@ -503,9 +510,10 @@ else:
               else "🟢"
           )
 
-          titulo = f"{color} [{dest_p}] '{nom_p}' (Archivo: {arch})"
+          dest_p_visual = formatear_nombre_minero(dest_p)
+          titulo = f"{color} [{dest_p_visual}] '{nom_p}' (Archivo: {arch})"
           with st.expander(f"{titulo} - [{est}]"):
-            st.write(f"**Destinatario:** {dest_p}")
+            st.write(f"**Destinatario:** {dest_p_visual}")
             st.write(
                 f"**Intentos restantes:** {int_rest}/{int_max} (Gastados:"
                 f" {int_max - int_rest})"
@@ -518,7 +526,7 @@ else:
             if foto_b:
               st.image(
                   foto_b,
-                  caption=f"Foto-respuesta subida por {dest_p}",
+                  caption=f"Foto-respuesta subida por {dest_p_visual}",
                   use_container_width=True,
               )
             st.write(
@@ -545,8 +553,9 @@ else:
       else:
         for m in messages_recibidos:
           id_m, remitente, mensaje, fecha = m
+          remitente_visual = formatear_nombre_minero(remitente)
           with st.container():
-            st.markdown(f"**De:** `{remitente}` | **Fecha:** {fecha}")
+            st.markdown(f"**De:** `{remitente_visual}` | **Fecha:** {fecha}")
             st.info(mensaje)
             if st.button("Marcar como leído / Borrar", key=f"del_msg_{id_m}"):
               borrar_mensaje_admin(id_m)
@@ -583,10 +592,10 @@ else:
           st.rerun()
 
     with pest_control:
-      st.subheader(f"🛠️ Ajustar Pruebas ({admin_filtro})")
+      st.subheader(f"🛠️ Ajustar Pruebas ({admin_filtro_visual})")
       todas_control = obtener_pruebas(destinatario=dest_filtro)
       if todas_control:
-        opciones_gestion = {f"[{p[12]}] '{p[2]}'": p for p in todas_control}
+        opciones_gestion = {f"[{formatear_nombre_minero(p[12])}] '{p[2]}'": p for p in todas_control}
         seleccion_gestion = st.selectbox(
             "Selecciona una prueba:", list(opciones_gestion.keys())
         )
@@ -616,7 +625,7 @@ else:
             st.session_state["mensaje_toast"] = "¡Prueba eliminada!"
             st.rerun()
       else:
-        st.info(f"No hay pruebas registradas bajo el filtro {admin_filtro}.")
+        st.info(f"No hay pruebas registradas bajo el filtro {admin_filtro_visual}.")
 
       st.write("---")
       st.subheader("🏷️ Gestión de Categorías")
@@ -657,12 +666,16 @@ else:
 
     with pest_pass:
       st.write(
-          f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero 1:**"
-          f" `{obtener_password('Minero 1')}` | 🔑 **Minero 2:**"
+          f"🔑 **Creador:** `{obtener_password('Creador')}` | 🔑 **Minero Óscar:**"
+          f" `{obtener_password('Minero 1')}` | 🔑 **Minero Pablo:**"
           f" `{obtener_password('Minero 2')}`"
       )
-      usuario_a_modificar = st.selectbox(
-          "Selecciona usuario:", ["Creador", "Minero 1", "Minero 2", "Admin"]
+      usuario_a_modificar_visual = st.selectbox(
+          "Selecciona usuario:", ["Creador", "Minero Óscar", "Minero Pablo", "Admin"]
+      )
+      usuario_a_modificar = (
+          "Minero 1" if usuario_a_modificar_visual == "Minero Óscar"
+          else ("Minero 2" if usuario_a_modificar_visual == "Minero Pablo" else usuario_a_modificar_visual)
       )
       pass_nueva_admin = st.text_input("Nueva contraseña:", type="password")
       if st.button("Forzar cambio"):
@@ -680,9 +693,10 @@ else:
   # ================= VISTA CREADOR =================
   elif st.session_state["rol"] == "Creador":
     minero_activo = st.session_state.get("minero_seleccionado", "Minero 1")
-    st.header(f"🎼 Panel del Creador — {minero_activo}")
+    minero_activo_visual = formatear_nombre_minero(minero_activo)
+    st.header(f"🎼 Panel del Creador — {minero_activo_visual}")
 
-    with st.expander(f"📊 Ver radar y estadísticas de {minero_activo}"):
+    with st.expander(f"📊 Ver radar y estadísticas de {minero_activo_visual}"):
       _, corregidas_c, puntos_c, media_c, radar_c = (
           obtener_estadisticas_globales(destinatario=minero_activo)
       )
@@ -694,7 +708,7 @@ else:
 
     st.write("---")
 
-    st.subheader(f"📤 Subir nueva prueba para {minero_activo}")
+    st.subheader(f"📤 Subir nueva prueba para {minero_activo_visual}")
 
     if "up_nombre_creador" not in st.session_state:
       st.session_state["up_nombre_creador"] = str(uuid.uuid4())
@@ -724,7 +738,7 @@ else:
           key=st.session_state["up_obra_creador"],
       )
       st.caption(
-          f"ℹ️ *{minero_activo} solo verá este nombre tras resolver la prueba.*"
+          f"ℹ️ *{minero_activo_visual} solo verá este nombre tras resolver la prueba.*"
       )
 
     if "up_check_indic_creador" not in st.session_state:
@@ -744,7 +758,7 @@ else:
           key=st.session_state["up_indic_creador"],
       )
       st.caption(
-          f"ℹ️ *{minero_activo} podrá leer estas indicaciones mientras"
+          f"ℹ️ *{minero_activo_visual} podrá leer estas indicaciones mientras"
           " resuelve el ejercicio.*"
       )
 
@@ -781,7 +795,7 @@ else:
       st.session_state["up_check_creador"] = str(uuid.uuid4())
 
     confirmacion_subida = st.checkbox(
-        f"Estoy seguro de que quiero subir esta prueba para {minero_activo}.",
+        f"Estoy seguro de que quiero subir esta prueba para {minero_activo_visual}.",
         key=st.session_state["up_check_creador"],
     )
 
@@ -844,7 +858,7 @@ else:
         st.session_state["up_check_creador"] = str(uuid.uuid4())
 
         st.session_state["mensaje_toast"] = (
-            f"¡La prueba '{nombre_final}' ha sido asignada a {minero_activo}!"
+            f"¡La prueba '{nombre_final}' ha sido asignada a {minero_activo_visual}!"
         )
         st.rerun()
       else:
@@ -852,10 +866,10 @@ else:
 
     st.write("---")
 
-    st.subheader(f"🗑️ Gestionar pruebas pendientes ({minero_activo})")
+    st.subheader(f"🗑️ Gestionar pruebas pendientes ({minero_activo_visual})")
     pendientes = obtener_pruebas("Pendiente", destinatario=minero_activo)
     if not pendientes:
-      st.info(f"No hay pruebas pendientes de resolver para {minero_activo}.")
+      st.info(f"No hay pruebas pendientes de resolver para {minero_activo_visual}.")
     else:
       for p in pendientes:
         id_p, arch, nom_p, int_max, int_rest, _, _, _, _, _, _, _, _, indic_p = (
@@ -866,7 +880,7 @@ else:
             st.info(f"💡 **Indicaciones asociadas:** {indic_p}")
           if int_max == int_rest:
             st.write(
-                f"{minero_activo} aún no ha gastado intentos. Puedes borrarla"
+                f"{minero_activo_visual} aún no ha gastado intentos. Puedes borrarla"
                 " si la subiste por error."
             )
             if st.button(
@@ -879,16 +893,16 @@ else:
               st.rerun()
           else:
             st.warning(
-                f"No puedes borrar esta prueba porque {minero_activo} ya ha"
+                f"No puedes borrar esta prueba porque {minero_activo_visual} ya ha"
                 f" gastado intentos ({int_rest}/{int_max} restantes)."
             )
 
     st.write("---")
 
-    st.subheader(f"📝 Pruebas pendientes de corregir ({minero_activo})")
+    st.subheader(f"📝 Pruebas pendientes de corregir ({minero_activo_visual})")
     respondidas = obtener_pruebas("Respondido", destinatario=minero_activo)
     if not respondidas:
-      st.info(f"No hay respuestas nuevas de {minero_activo} por corregir.")
+      st.info(f"No hay respuestas nuevas de {minero_activo_visual} por corregir.")
     else:
       opciones_corregir = {f"'{r[2]}'": r for r in respondidas}
       seleccion_corregir = st.selectbox(
@@ -921,11 +935,11 @@ else:
         st.info(f"💡 **Indicaciones que tuvo el alumno:** {indic_c}")
 
       st.warning(
-          f"Justificación de {minero_activo}: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**"
+          f"Justificación de {minero_activo_visual}: **{respuesta_b_c if respuesta_b_c else '*Sin texto de justificación*'}**"
       )
 
       if foto_b_c:
-        st.write(f"📷 **Foto-respuesta adjunta por {minero_activo}:**")
+        st.write(f"📷 **Foto-respuesta adjunta por {minero_activo_visual}:**")
         st.image(foto_b_c, use_container_width=True)
 
       st.write("🎧 **Escucha la progresión para corregir:**")
@@ -986,7 +1000,7 @@ else:
 
           st.session_state["mensaje_toast"] = (
               f"¡Calificación de {puntos_dados}/100 enviada correctamente a"
-              f" {minero_activo}!"
+              f" {minero_activo_visual}!"
           )
           st.rerun()
         else:
@@ -997,11 +1011,11 @@ else:
 
     st.write("---")
 
-    st.subheader(f"📚 Historial de pruebas corregidas ({minero_activo})")
+    st.subheader(f"📚 Historial de pruebas corregidas ({minero_activo_visual})")
     corregidas_creador = obtener_pruebas("Corregido", destinatario=minero_activo)
     if not corregidas_creador:
       st.info(
-          f"Aún no hay pruebas corregidas en el historial de {minero_activo}."
+          f"Aún no hay pruebas corregidas en el historial de {minero_activo_visual}."
       )
     else:
       filtro_cat = st.text_input(
@@ -1037,12 +1051,12 @@ else:
           if indic_cor:
             st.info(f"💡 **Indicaciones proporcionadas:** {indic_cor}")
           st.write(
-              f"**Justificación de {minero_activo}:** {resp_b if resp_b else '*Sin texto*'}"
+              f"**Justificación de {minero_activo_visual}:** {resp_b if resp_b else '*Sin texto*'}"
           )
           if foto_b:
             st.image(
                 foto_b,
-                caption=f"Foto-respuesta de {minero_activo}",
+                caption=f"Foto-respuesta de {minero_activo_visual}",
                 use_container_width=True,
             )
           st.write("---")
@@ -1053,10 +1067,11 @@ else:
             )
           st.audio(aud_cor)
 
-  # ================= VISTA MINEROS (Minero 1 / Minero 2) =================
+  # ================= VISTA MINEROS (Minero 1: Óscar / Minero 2: Pablo) =================
   elif st.session_state["rol"] in ["Minero 1", "Minero 2"]:
     minero_actual = st.session_state["rol"]
-    st.header(f"🪨 Panel del Minero ({minero_actual})")
+    minero_actual_visual = formatear_nombre_minero(minero_actual)
+    st.header(f"🪨 Panel del Minero ({minero_actual_visual})")
 
     _, _, puntos_totales, nota_media, medias_radar = (
         obtener_estadisticas_globales(destinatario=minero_actual)
