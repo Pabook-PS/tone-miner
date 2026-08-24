@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 import uuid
+import plotly.graph_objects as go
 from supabase import create_client, Client
 
 # --- CONFIGURACIÓN DE SEGURIDAD SUPABASE ---
@@ -12,6 +13,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     st.stop()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+CATEGORIAS_OFICIALES = ["Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"]
 
 # --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
 def subir_archivo_storage(bytes_file, nombre_original, subcarpeta, content_type):
@@ -127,7 +130,7 @@ def borrar_mensaje_admin(id_mensaje):
     supabase.table("mensajes_admin").delete().eq("id", id_mensaje).execute()
 
 def obtener_estadisticas_globales(destinatario=None):
-    query = supabase.table("pruebas").select("id, estado, puntuacion, destinatario")
+    query = supabase.table("pruebas").select("id, estado, puntuacion, destinatario, nombre_personalizado")
     if destinatario:
         query = query.eq("destinatario", destinatario)
     res_all = query.execute()
@@ -140,15 +143,60 @@ def obtener_estadisticas_globales(destinatario=None):
     puntos_totales = sum([p["puntuacion"] for p in corregidas_list if p["puntuacion"] is not None])
     nota_media = (puntos_totales / corregidas) if corregidas > 0 else None
     
-    corregidas_ordenadas = sorted(corregidas_list, key=lambda x: x["id"], reverse=True)
-    racha = 0
-    for p in corregidas_ordenadas:
-        if p["puntuacion"] is not None and p["puntuacion"] >= 5:
-            racha += 1
-        else:
-            break
+    # Cálculo de medias por categoría para el gráfico de radar
+    stats_cat = {cat: [] for cat in CATEGORIAS_OFICIALES}
+    for p in corregidas_list:
+        nom = p.get("nombre_personalizado", "")
+        punt = p.get("puntuacion")
+        if punt is not None:
+            for cat in CATEGORIAS_OFICIALES:
+                if f"[{cat}]" in nom:
+                    stats_cat[cat].append(punt)
+                    break
+                    
+    medias_radar = {cat: (sum(vals)/len(vals) if vals else 0) for cat, vals in stats_cat.items()}
             
-    return total, corregidas, puntos_totales, nota_media, racha
+    return total, corregidas, puntos_totales, nota_media, medias_radar
+
+def generar_grafico_radar(medias_dict):
+    categorias = list(medias_dict.keys())
+    valores = [round(medias_dict[c], 1) for c in categorias]
+    
+    # Cerrar el polígono
+    categorias_cerradas = categorias + [categorias[0]]
+    valores_cerrados = valores + [valores[0]]
+    
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=valores_cerrados,
+        theta=categorias_cerradas,
+        fill='toself',
+        fillcolor='rgba(255, 75, 75, 0.4)',
+        line=dict(color='#FF4B4B', width=2),
+        marker=dict(color='#FFFFFF', size=6),
+        name='Estadísticas'
+    ))
+    
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                tickfont=dict(size=10, color="#888"),
+                gridcolor="#333"
+            ),
+            angularaxis=dict(
+                tickfont=dict(size=13, color="#FFF", family="sans-serif"),
+                gridcolor="#333"
+            ),
+            bgcolor="rgba(0,0,0,0)"
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=35, r=35, t=25, b=25),
+        showlegend=False,
+        height=320
+    )
+    return fig
 
 
 # --- INTERFAZ GRÁFICA (Streamlit) ---
@@ -260,13 +308,15 @@ else:
         
         with pest_stats:
             st.subheader(f"📈 Rendimiento del Juego — {admin_filtro}")
-            total, corregidas, puntos_totales, nota_media, racha = obtener_estadisticas_globales(dest_filtro)
-            col_t, col_c, col_p, col_m, col_r = st.columns(5)
+            total, corregidas, puntos_totales, nota_media, medias_radar = obtener_estadisticas_globales(dest_filtro)
+            col_t, col_c, col_p, col_m = st.columns(4)
             col_t.metric("Pruebas", total)
             col_c.metric("Completadas", corregidas)
             col_p.metric("Puntos", f"{puntos_totales}")
             col_m.metric("Media", f"{round(nota_media, 2)}/100" if nota_media else "N/A")
-            col_r.metric("Racha 🔥", f"{racha}")
+            
+            st.write("")
+            st.plotly_chart(generar_grafico_radar(medias_radar), use_container_width=True)
                 
             st.write("---")
             st.subheader("📋 Historial Completo y Auditoría")
@@ -410,7 +460,7 @@ else:
             indicaciones_input = st.text_area("Indicaciones / Pistas para el Minero:", placeholder="Ej: Fíjate bien en el bajo a partir del compás 3...", key=st.session_state["up_indic_creador"])
             st.caption(f"ℹ️ *{minero_activo} podrá leer estas indicaciones mientras resuelve el ejercicio.*")
 
-        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Acordes", "Escalas", "Dictado"])
+        categoria_elegida = st.selectbox("Categoría del ejercicio:", ["Ninguna", "Intervalos", "Progresiones", "Fragmentos", "Escalas", "Dictado"])
 
         if "up_audio_creador" not in st.session_state:
             st.session_state["up_audio_creador"] = str(uuid.uuid4())
@@ -596,11 +646,14 @@ else:
         minero_actual = st.session_state["rol"]
         st.header(f"🪨 Panel del Minero ({minero_actual})")
         
-        _, _, puntos_totales, nota_media, racha = obtener_estadisticas_globales(destinatario=minero_actual)
+        _, _, puntos_totales, nota_media, medias_radar = obtener_estadisticas_globales(destinatario=minero_actual)
         col1, col2, col3 = st.columns(3)
         col1.metric("Tus Puntos 🏆", f"{puntos_totales} pts")
         col2.metric("Nota Media ⭐", f"{round(nota_media, 2)}/100" if nota_media else "N/A")
-        col3.metric("Racha 🔥", f"{racha} seguidas")
+        col3.metric("Evaluaciones 📝", f"{sum([1 for v in medias_radar.values() if v > 0])} categorías activas")
+        
+        st.write("")
+        st.plotly_chart(generar_grafico_radar(medias_radar), use_container_width=True)
         
         st.write("---")
         
