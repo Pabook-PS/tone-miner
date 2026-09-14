@@ -4,6 +4,14 @@ import plotly.graph_objects as go
 import streamlit as st
 from supabase import Client, create_client
 
+# --- CONFIGURACIÓN DE PÁGINA (PWA Y TÍTULO) ---
+st.set_page_config(
+    page_title="Tone Miner",
+    page_icon="⛏️",
+    layout="wide",
+    initial_sidebar_state="auto"
+)
+
 # --- CONFIGURACIÓN DE SEGURIDAD SUPABASE ---
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
@@ -316,6 +324,45 @@ def generar_grafico_radar(medias_dict):
 
 # --- INTERFAZ GRÁFICA (Streamlit) ---
 st.title("⛏️ Tone Miner")
+
+# --- INYECCIÓN EN EL HEAD PARA PWA (ÍCONO Y MANIFIESTO) ---
+st.components.v1.html(
+    """
+    <script>
+      const head = window.parent.document.head;
+
+      if (!head.querySelector('link[rel="manifest"]')) {
+        const manifestLink = window.parent.document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = '/app/static/manifest.json';
+        head.appendChild(manifestLink);
+      }
+
+      if (!head.querySelector('link[rel="apple-touch-icon"]')) {
+        const appleIcon = window.parent.document.createElement('link');
+        appleIcon.rel = 'apple-touch-icon';
+        appleIcon.href = '/app/static/icon-192.png';
+        head.appendChild(appleIcon);
+      }
+
+      if (!head.querySelector('meta[name="apple-mobile-web-app-title"]')) {
+        const appleTitle = window.parent.document.createElement('meta');
+        appleTitle.name = 'apple-mobile-web-app-title';
+        appleTitle.content = 'Tone Miner';
+        head.appendChild(appleTitle);
+      }
+
+      if (!head.querySelector('meta[name="theme-color"]')) {
+        const themeColor = window.parent.document.createElement('meta');
+        themeColor.name = 'theme-color';
+        themeColor.content = '#FF4B4B';
+        head.appendChild(themeColor);
+      }
+    </script>
+    """,
+    height=0,
+    width=0
+)
 
 if "rol" not in st.session_state:
   st.session_state["rol"] = None
