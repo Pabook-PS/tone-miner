@@ -320,15 +320,6 @@ st.title("⛏️ Tone Miner")
 if "rol" not in st.session_state:
   st.session_state["rol"] = None
 
-# --- CONFIGURACIÓN PWA ---
-st.markdown(
-    """
-    <link rel="manifest" href="/app/static/manifest.json">
-    <meta name="theme-color" content="#FF4B4B">
-    """,
-    unsafe_allow_html=True,
-)
-
 # --- LÓGICA DE MENSAJES FLOTANTES (TOASTS) ---
 if "mensaje_toast" in st.session_state:
   st.toast(st.session_state["mensaje_toast"], icon="✅")
