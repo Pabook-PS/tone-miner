@@ -494,8 +494,7 @@ if st.session_state["rol"] is None:
 
   # 2. PANTALLA DEL GIMNASIO DE OÍDO ABSOLUTO
   elif st.session_state["vista_publica"] == "entrenamiento_gym":
-    st.subheader("🧠 Gimnasio de Oído Absoluto (Laboratorio Neuroauditivo)")
-    st.caption("Protocolos interactivos en tiempo real con síntesis de audio nativa.")
+    st.subheader("🧠 Gimnasio de Oído Absoluto")
 
     if "ejercicio_gym_activo" not in st.session_state:
       st.session_state["ejercicio_gym_activo"] = "wong"
@@ -520,7 +519,7 @@ if st.session_state["rol"] is None:
     if st.session_state["ejercicio_gym_activo"] == "wong":
       st.markdown("### 🎯 Protocolo Wong / Van Hedger (Target vs. Distractor)")
       st.info(
-          "**Regla neuroauditiva:** Responde en menos de 2.0 segundos. "
+          "Responde en menos de 2.0 segundos. "
           "Si tardas más, se anula la memoria de croma y tu cerebro recurre al cálculo interválico."
       )
 
