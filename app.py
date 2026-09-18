@@ -4,14 +4,6 @@ import plotly.graph_objects as go
 import streamlit as st
 from supabase import Client, create_client
 
-# --- CONFIGURACIÓN DE PÁGINA (PWA Y TÍTULO) ---
-st.set_page_config(
-    page_title="Tone Miner",
-    page_icon="⛏️",
-    layout="wide",
-    initial_sidebar_state="auto"
-)
-
 # --- CONFIGURACIÓN DE SEGURIDAD SUPABASE ---
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
@@ -325,77 +317,125 @@ def generar_grafico_radar(medias_dict):
 # --- INTERFAZ GRÁFICA (Streamlit) ---
 st.title("⛏️ Tone Miner")
 
-# --- INYECCIÓN EN EL HEAD PARA PWA (ÍCONO Y MANIFIESTO) ---
-st.components.v1.html(
-    """
-    <script>
-      const head = window.parent.document.head;
-
-      if (!head.querySelector('link[rel="manifest"]')) {
-        const manifestLink = window.parent.document.createElement('link');
-        manifestLink.rel = 'manifest';
-        manifestLink.href = '/app/static/manifest.json';
-        head.appendChild(manifestLink);
-      }
-
-      if (!head.querySelector('link[rel="apple-touch-icon"]')) {
-        const appleIcon = window.parent.document.createElement('link');
-        appleIcon.rel = 'apple-touch-icon';
-        appleIcon.href = '/app/static/icon-192.png';
-        head.appendChild(appleIcon);
-      }
-
-      if (!head.querySelector('meta[name="apple-mobile-web-app-title"]')) {
-        const appleTitle = window.parent.document.createElement('meta');
-        appleTitle.name = 'apple-mobile-web-app-title';
-        appleTitle.content = 'Tone Miner';
-        head.appendChild(appleTitle);
-      }
-
-      if (!head.querySelector('meta[name="theme-color"]')) {
-        const themeColor = window.parent.document.createElement('meta');
-        themeColor.name = 'theme-color';
-        themeColor.content = '#FF4B4B';
-        head.appendChild(themeColor);
-      }
-    </script>
-    """,
-    height=0,
-    width=0
-)
-
 if "rol" not in st.session_state:
   st.session_state["rol"] = None
+
+# Variable de estado para controlar la navegación en la pantalla de inicio
+if "vista_publica" not in st.session_state:
+  st.session_state["vista_publica"] = "login"
 
 # --- LÓGICA DE MENSAJES FLOTANTES (TOASTS) ---
 if "mensaje_toast" in st.session_state:
   st.toast(st.session_state["mensaje_toast"], icon="✅")
   del st.session_state["mensaje_toast"]
 
-# --- PANTALLA DE LOGIN ---
+# --- PANTALLA DE INICIO (LOGIN O ENTRENAMIENTO AUDITIVO) ---
 if st.session_state["rol"] is None:
-  st.write("### 🔑 Identifícate para entrar a la mina 🔑")
-  opciones_roles = ["Selecciona una opción", "Creador", "Minero Óscar", "Minero Pablo", "Administrador"]
-  rol_elegido = st.selectbox("¿Quién eres?", opciones_roles)
 
-  if rol_elegido != "Selecciona una opción":
-    password = st.text_input("Introduce tu contraseña de acceso:", type="password")
-    if st.button("Entrar"):
-      rol_db = (
-          "Creador"
-          if rol_elegido == "Creador"
-          else "Admin"
-          if rol_elegido == "Administrador"
-          else "Minero 1"
-          if rol_elegido == "Minero Óscar"
-          else "Minero 2"
-      )
-      if password == obtener_password(rol_db):
-        st.session_state["rol"] = rol_db
-        st.session_state["mensaje_toast"] = f"¡Acceso concedido como {formatear_nombre_minero(rol_db)}!"
+  # 1. PANTALLA DE INTRODUCCIÓN TEÓRICA
+  if st.session_state["vista_publica"] == "entrenamiento_intro":
+    st.subheader("📚 Marco Científico del Oído Absoluto en Adultos")
+    
+    st.markdown("""
+> * **Wong, Y. K., et al. (2025).** *Learning fast and accurate absolute pitch judgment in adulthood.* Psychonomic Bulletin & Review, 32, 1676–1688. (Demostró que adultos entrenados con protocolos gamificados alcanzan precisión ≥90% y tiempos de respuesta típicos de poseedores de oído absoluto de cuna).
+> * **Van Hedger, S. C., Heald, S. L., & Nusbaum, H. C. (2019).** *Absolute pitch can be learned by some adults.* PLOS ONE, 14(9), e0223047. (Estudio pionero donde adultos alcanzaron niveles genuinos de categorización sin depender de oído relativo en 8 semanas).
+> * **Van Hedger, S. C., et al. (2015).** *Auditory working memory as a predictor of absolute pitch learning in adults.* Cognition, 140, 95–110.
+> * **Levitin, D. J. (1994).** *Absolute memory for musical pitch: Evidence from the production of learned melodies.* Perception & Psychophysics, 56(4), 414–423. (Descubrimiento del almacenamiento de frecuencia absoluta en memoria implícita en personas sin oído absoluto).
+    """)
+    
+    st.write("---")
+    col_avanzar, col_volver = st.columns([2, 1])
+    with col_avanzar:
+      if st.button("🚀 Entendido, acceder al Gimnasio Auditivo"):
+        st.session_state["vista_publica"] = "entrenamiento_gym"
         st.rerun()
-      else:
-        st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
+    with col_volver:
+      if st.button("⬅️ Volver al Login"):
+        st.session_state["vista_publica"] = "login"
+        st.rerun()
+
+  # 2. PANTALLA DEL GIMNASIO DE OÍDO ABSOLUTO
+  elif st.session_state["vista_publica"] == "entrenamiento_gym":
+    st.subheader("🧠 Gimnasio de Oído Absoluto (Laboratorio Neuroauditivo)")
+    st.caption("Protocolos autónomos de estimulación perceptual y memoria de croma independientes de las evaluaciones de la mina.")
+
+    if "ejercicio_gym_activo" not in st.session_state:
+      st.session_state["ejercicio_gym_activo"] = "wong"
+
+    col_btn1, col_btn2, col_btn3 = st.columns(3)
+    with col_btn1:
+      if st.button("🎯 Método Wong / Van Hedger", use_container_width=True):
+        st.session_state["ejercicio_gym_activo"] = "wong"
+    with col_btn2:
+      if st.button("🎻 Desacoplo Espectral", use_container_width=True):
+        st.session_state["ejercicio_gym_activo"] = "espectral"
+    with col_btn3:
+      if st.button("⚡ Memoria de Trabajo", use_container_width=True):
+        st.session_state["ejercicio_gym_activo"] = "memoria"
+
+    st.write("---")
+
+    # Contenido según el ejercicio seleccionado
+    if st.session_state["ejercicio_gym_activo"] == "wong":
+      st.markdown("### 🎯 Protocolo Wong / Van Hedger")
+      st.info(
+          "En lugar de intentar memorizar las 12 notas a la vez, se entrenan categorías aisladas usando refuerzo inmediato por ensayo:\n\n"
+          "1. **Fase de 1 nota ('Target vs. Distractor'):** Comienza con una sola nota (ej. Fa o Do). Escucha tonos aislados y decide rápidamente si es esa nota o 'fuera de rango'.\n"
+          "2. **Umbral estricto:** No agregues una segunda nota hasta alcanzar el 90% de aciertos de forma repetida.\n"
+          "3. **Expansión intercalada:** Agrega notas alternando hacia arriba y hacia abajo (ej. Fa → Mi → Fa#).\n"
+          "4. **Control temporal estricto:** Limita la ventana de respuesta a menos de 2 segundos. Si tardas más, tu cerebro deja de usar memoria de croma (altura absoluta) y empieza a calcular intervalos de forma reactiva (oído relativo lento)."
+      )
+
+    elif st.session_state["ejercicio_gym_activo"] == "espectral":
+      st.markdown("### 🎻 Desacoplo Espectral (Aislamiento de Altura)")
+      st.info(
+          "Uno de los fallos más habituales en adultos es memorizar cómo suena un Do en su propio piano y fallar en otros instrumentos:\n\n"
+          "* **Variedad tímbrica:** Realiza tests con muestras de al menos 4 timbres distintos (piano de cola, sintetizador onda senoidal pura, violín, voz humana) a lo largo de mínimo 3 octavas distintas.\n"
+          "* **Objetivo neurológico:** Esto obliga a la corteza auditiva a codificar la clase de altura (*pitch chroma*) y no solo el brillo o los armónicos secundarios de un instrumento concreto."
+      )
+
+    elif st.session_state["ejercicio_gym_activo"] == "memoria":
+      st.markdown("### ⚡ Entrenamiento de la Memoria de Trabajo Auditiva")
+      st.info(
+          "Las investigaciones de la Universidad de Chicago (Van Hedger et al., 2015, 2019) confirmaron que el factor predictor número uno para que un adulto desarrolle oído absoluto funcional es la capacidad de retener sonidos en la memoria operativa.\n\n"
+          "Dedicar sesiones breves a recordar secuencias de 3 a 5 alturas aisladas tras varios segundos de silencio amplifica drásticamente la consolidación neural."
+      )
+
+    st.write("---")
+    if st.button("⬅️ Salir del Gimnasio y volver al Login"):
+      st.session_state["vista_publica"] = "login"
+      st.rerun()
+
+  # 3. PANTALLA DE LOGIN CONVENCIONAL (CON BOTÓN DE ACCESO AL ENTRENAMIENTO)
+  else:
+    st.write("### 🔑 Identifícate para entrar a la mina 🔑")
+    opciones_roles = ["Selecciona una opción", "Creador", "Minero Óscar", "Minero Pablo", "Administrador"]
+    rol_elegido = st.selectbox("¿Quién eres?", opciones_roles)
+
+    if rol_elegido != "Selecciona una opción":
+      password = st.text_input("Introduce tu contraseña de acceso:", type="password")
+      if st.button("Entrar"):
+        rol_db = (
+            "Creador"
+            if rol_elegido == "Creador"
+            else "Admin"
+            if rol_elegido == "Administrador"
+            else "Minero 1"
+            if rol_elegido == "Minero Óscar"
+            else "Minero 2"
+        )
+        if password == obtener_password(rol_db):
+          st.session_state["rol"] = rol_db
+          st.session_state["mensaje_toast"] = f"¡Acceso concedido como {formatear_nombre_minero(rol_db)}!"
+          st.rerun()
+        else:
+          st.error("❌ Contraseña incorrecta. Inténtalo de nuevo.")
+
+    st.write("---")
+    st.markdown("#### 🎧 Módulo Abierto")
+    if st.button("Entrenamiento auditivo", help="Acceso directo al marco científico y gimnasio de oído absoluto"):
+      st.session_state["vista_publica"] = "entrenamiento_intro"
+      st.rerun()
 
 # --- USUARIO AUTENTICADO ---
 else:
@@ -482,6 +522,7 @@ else:
     st.write("---")
     if st.button("Cerrar Sesión 🚪"):
       st.session_state["rol"] = None
+      st.session_state["vista_publica"] = "login"
       st.rerun()
 
   # ================= VISTA ADMINISTRADOR =================
