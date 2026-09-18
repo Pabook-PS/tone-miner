@@ -87,7 +87,6 @@ def crear_wav_bytes(samples, sample_rate=22050):
   block_align = num_channels * sampwidth
   data_size = len(samples) * sampwidth
 
-  # Encabezado estándar RIFF/WAV
   buffer.write(b"RIFF")
   buffer.write(struct.pack("<I", 36 + data_size))
   buffer.write(b"WAVE")
@@ -105,10 +104,15 @@ def reproducir_audio_sintetizado(frecuencia, timbre="piano", duracion=1.2):
   samples = generar_onda_nota(frecuencia, duracion, timbre=timbre)
   wav_bytes = crear_wav_bytes(samples)
   b64 = base64.b64encode(wav_bytes).decode()
+  uid_audio = uuid.uuid4().hex
   html = f"""
-  <audio autoplay style="display: none;">
+  <audio id="snd_{uid_audio}" autoplay style="display: none;">
       <source src="data:audio/wav;base64,{b64}" type="audio/wav">
   </audio>
+  <script>
+      var a = document.getElementById("snd_{uid_audio}");
+      if(a) {{ a.play().catch(function(e){{}}); }}
+  </script>
   """
   st.components.v1.html(html, height=0, width=0)
 
@@ -124,12 +128,26 @@ def reproducir_secuencia_sintetizada(lista_frecuencias, timbre="piano", duracion
 
   wav_bytes = crear_wav_bytes(samples_totales, sample_rate=sample_rate)
   b64 = base64.b64encode(wav_bytes).decode()
+  uid_audio = uuid.uuid4().hex
   html = f"""
-  <audio autoplay style="display: none;">
+  <audio id="snd_{uid_audio}" autoplay style="display: none;">
       <source src="data:audio/wav;base64,{b64}" type="audio/wav">
   </audio>
+  <script>
+      var a = document.getElementById("snd_{uid_audio}");
+      if(a) {{ a.play().catch(function(e){{}}); }}
+  </script>
   """
   st.components.v1.html(html, height=0, width=0)
+
+def resetear_gimnasio():
+  """Limpia todos los contadores, estados y métricas acumuladas del gimnasio auditivo"""
+  st.session_state["wong_stats"] = {"total": 0, "aciertos": 0}
+  st.session_state["wong_ensayo_activo"] = None
+  st.session_state["espectral_stats"] = {"total": 0, "aciertos": 0}
+  st.session_state["espectral_ensayo"] = None
+  st.session_state["memoria_secuencia"] = []
+  st.session_state["memoria_usuario"] = []
 
 
 # --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
@@ -428,9 +446,22 @@ st.title("⛏️ Tone Miner")
 if "rol" not in st.session_state:
   st.session_state["rol"] = None
 
-# Variable de navegación en portada
 if "vista_publica" not in st.session_state:
   st.session_state["vista_publica"] = "login"
+
+# Inicialización preventiva de variables del gimnasio
+if "wong_stats" not in st.session_state:
+  st.session_state["wong_stats"] = {"total": 0, "aciertos": 0}
+if "wong_ensayo_activo" not in st.session_state:
+  st.session_state["wong_ensayo_activo"] = None
+if "espectral_stats" not in st.session_state:
+  st.session_state["espectral_stats"] = {"total": 0, "aciertos": 0}
+if "espectral_ensayo" not in st.session_state:
+  st.session_state["espectral_ensayo"] = None
+if "memoria_secuencia" not in st.session_state:
+  st.session_state["memoria_secuencia"] = []
+if "memoria_usuario" not in st.session_state:
+  st.session_state["memoria_usuario"] = []
 
 # --- LÓGICA DE MENSAJES FLOTANTES (TOASTS) ---
 if "mensaje_toast" in st.session_state:
@@ -459,6 +490,7 @@ if st.session_state["rol"] is None:
         st.rerun()
     with col_volver:
       if st.button("⬅️ Volver al Login"):
+        resetear_gimnasio()
         st.session_state["vista_publica"] = "login"
         st.rerun()
 
@@ -496,10 +528,6 @@ if st.session_state["rol"] is None:
 
       if "wong_target" not in st.session_state:
         st.session_state["wong_target"] = "Do"
-      if "wong_stats" not in st.session_state:
-        st.session_state["wong_stats"] = {"total": 0, "aciertos": 0}
-      if "wong_ensayo_activo" not in st.session_state:
-        st.session_state["wong_ensayo_activo"] = None
 
       col_w1, col_w2 = st.columns([1, 2])
       with col_w1:
@@ -586,11 +614,6 @@ if st.session_state["rol"] is None:
           "y de la octava física (3, 4 o 5)."
       )
 
-      if "espectral_ensayo" not in st.session_state:
-        st.session_state["espectral_ensayo"] = None
-      if "espectral_stats" not in st.session_state:
-        st.session_state["espectral_stats"] = {"total": 0, "aciertos": 0}
-
       col_es1, col_es2 = st.columns([1, 1])
       with col_es1:
         if st.button("🎲 Generar sonido aleatorio", use_container_width=True):
@@ -653,11 +676,6 @@ if st.session_state["rol"] is None:
           "Escucha la secuencia, retenla en mente durante el silencio y reconstrúyela nota a nota."
       )
 
-      if "memoria_secuencia" not in st.session_state:
-        st.session_state["memoria_secuencia"] = []
-      if "memoria_usuario" not in st.session_state:
-        st.session_state["memoria_usuario"] = []
-
       longitud_sec = st.slider("Longitud de la secuencia:", min_value=3, max_value=5, value=3)
 
       col_m1, col_m2 = st.columns(2)
@@ -717,6 +735,7 @@ if st.session_state["rol"] is None:
 
     st.write("---")
     if st.button("⬅️ Salir del Gimnasio y volver al Login"):
+      resetear_gimnasio()
       st.session_state["vista_publica"] = "login"
       st.rerun()
 
