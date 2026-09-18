@@ -1,4 +1,7 @@
 import datetime
+import math
+import random
+import time
 import uuid
 import plotly.graph_objects as go
 import streamlit as st
@@ -22,6 +25,105 @@ NOMBRE_MINERO = {
 
 def formatear_nombre_minero(rol_db):
   return NOMBRE_MINERO.get(rol_db, rol_db)
+
+
+# --- SINTETIZADOR WEB Y CONSTANTES MUSICALES ---
+NOTAS_BASE = ["Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si"]
+
+def obtener_frecuencia(nota_nombre, octava=4):
+  # La4 = 440 Hz (Indice 9 en la lista base de Do=0 a Si=11)
+  idx = NOTAS_BASE.index(nota_nombre)
+  semitonos_desde_la4 = (idx - 9) + (octava - 4) * 12
+  return round(440.0 * (2.0 ** (semitonos_desde_la4 / 12.0)), 2)
+
+def reproducir_audio_sintetizado(frecuencia, timbre="piano", duracion=1.2, delay_ms=0):
+  """Genera y reproduce en tiempo real un tono con la Web Audio API del navegador"""
+  componente_js = f"""
+  <script>
+  setTimeout(() => {{
+      try {{
+          var AudioContext = window.AudioContext || window.webkitAudioContext;
+          var ctx = new AudioContext();
+          var osc = ctx.createOscillator();
+          var gain = ctx.createGain();
+          
+          var timbre = "{timbre}";
+          var freq = {frecuencia};
+          var dur = {duracion};
+          
+          osc.frequency.setValueAtTime(freq, ctx.currentTime);
+          
+          if (timbre === "senoide") {{
+              osc.type = "sine";
+              gain.gain.setValueAtTime(0.01, ctx.currentTime);
+              gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          }} else if (timbre === "violin") {{
+              osc.type = "sawtooth";
+              gain.gain.setValueAtTime(0.01, ctx.currentTime);
+              gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.15);
+              gain.gain.setValueAtTime(0.2, ctx.currentTime + dur - 0.1);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          }} else if (timbre === "voz") {{
+              osc.type = "triangle";
+              gain.gain.setValueAtTime(0.01, ctx.currentTime);
+              gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.08);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          }} else {{ // Piano
+              osc.type = "triangle";
+              gain.gain.setValueAtTime(0.01, ctx.currentTime);
+              gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+          }}
+          
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          
+          osc.start();
+          osc.stop(ctx.currentTime + dur);
+      }} catch(e) {{
+          console.error("Audio no compatible:", e);
+      }}
+  }}, {delay_ms});
+  </script>
+  """
+  st.components.v1.html(componente_js, height=0, width=0)
+
+def reproducir_secuencia_sintetizada(lista_frecuencias, timbre="piano", duracion_tono=0.8, silencio_inter=0.4):
+  """Genera y reproduce una secuencia completa con retardos temporales calculados"""
+  bloques_js = ""
+  tiempo_acumulado_ms = 0
+  
+  for freq in lista_frecuencias:
+    bloques_js += f"""
+    setTimeout(() => {{
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = "{'triangle' if timbre == 'piano' else 'sine'}";
+        osc.frequency.setValueAtTime({freq}, ctx.currentTime);
+        gain.gain.setValueAtTime(0.01, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + {duracion_tono});
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + {duracion_tono});
+    }}, {tiempo_acumulado_ms});
+    """
+    tiempo_acumulado_ms += int((duracion_tono + silencio_inter) * 1000)
+
+  componente_js = f"""
+  <script>
+  try {{
+      var AudioContext = window.AudioContext || window.webkitAudioContext;
+      var ctx = new AudioContext();
+      {bloques_js}
+  }} catch(e) {{
+      console.error("Secuencia no soportada:", e);
+  }}
+  </script>
+  """
+  st.components.v1.html(componente_js, height=0, width=0)
 
 
 # --- FUNCIONES DE ALMACENAMIENTO (SUPABASE STORAGE) ---
@@ -320,7 +422,7 @@ st.title("⛏️ Tone Miner")
 if "rol" not in st.session_state:
   st.session_state["rol"] = None
 
-# Variable de estado para controlar la navegación en la pantalla de inicio
+# Variable de navegación en portada
 if "vista_publica" not in st.session_state:
   st.session_state["vista_publica"] = "login"
 
@@ -357,7 +459,7 @@ if st.session_state["rol"] is None:
   # 2. PANTALLA DEL GIMNASIO DE OÍDO ABSOLUTO
   elif st.session_state["vista_publica"] == "entrenamiento_gym":
     st.subheader("🧠 Gimnasio de Oído Absoluto (Laboratorio Neuroauditivo)")
-    st.caption("Protocolos autónomos de estimulación perceptual y memoria de croma independientes de las evaluaciones de la mina.")
+    st.caption("Protocolos interactivos en tiempo real con síntesis armónica en navegador.")
 
     if "ejercicio_gym_activo" not in st.session_state:
       st.session_state["ejercicio_gym_activo"] = "wong"
@@ -366,47 +468,254 @@ if st.session_state["rol"] is None:
     with col_btn1:
       if st.button("🎯 Método Wong / Van Hedger", use_container_width=True):
         st.session_state["ejercicio_gym_activo"] = "wong"
+        st.rerun()
     with col_btn2:
       if st.button("🎻 Desacoplo Espectral", use_container_width=True):
         st.session_state["ejercicio_gym_activo"] = "espectral"
+        st.rerun()
     with col_btn3:
       if st.button("⚡ Memoria de Trabajo", use_container_width=True):
         st.session_state["ejercicio_gym_activo"] = "memoria"
+        st.rerun()
 
     st.write("---")
 
-    # Contenido según el ejercicio seleccionado
+    # ================= EJERCICIO 1: WONG / VAN HEDGER =================
     if st.session_state["ejercicio_gym_activo"] == "wong":
-      st.markdown("### 🎯 Protocolo Wong / Van Hedger")
+      st.markdown("### 🎯 Protocolo Wong / Van Hedger (Target vs. Distractor)")
       st.info(
-          "En lugar de intentar memorizar las 12 notas a la vez, se entrenan categorías aisladas usando refuerzo inmediato por ensayo:\n\n"
-          "1. **Fase de 1 nota ('Target vs. Distractor'):** Comienza con una sola nota (ej. Fa o Do). Escucha tonos aislados y decide rápidamente si es esa nota o 'fuera de rango'.\n"
-          "2. **Umbral estricto:** No agregues una segunda nota hasta alcanzar el 90% de aciertos de forma repetida.\n"
-          "3. **Expansión intercalada:** Agrega notas alternando hacia arriba y hacia abajo (ej. Fa → Mi → Fa#).\n"
-          "4. **Control temporal estricto:** Limita la ventana de respuesta a menos de 2 segundos. Si tardas más, tu cerebro deja de usar memoria de croma (altura absoluta) y empieza a calcular intervalos de forma reactiva (oído relativo lento)."
+          "**Regla neuroauditiva:** Responde en menos de 2.0 segundos. "
+          "Si tardas más, se anula la memoria de croma y tu cerebro recurre al cálculo interválico."
       )
 
+      # Inicialización de estado del ejercicio
+      if "wong_target" not in st.session_state:
+        st.session_state["wong_target"] = "Do"
+      if "wong_stats" not in st.session_state:
+        st.session_state["wong_stats"] = {"total": 0, "aciertos": 0}
+      if "wong_ensayo_activo" not in st.session_state:
+        st.session_state["wong_ensayo_activo"] = None
+
+      col_w1, col_w2 = st.columns([1, 2])
+      with col_w1:
+        target_sel = st.selectbox(
+            "Nota Target (Categoría):",
+            ["Do", "Fa", "Sol", "La"],
+            index=["Do", "Fa", "Sol", "La"].index(st.session_state["wong_target"]),
+            key="sel_wong_target"
+        )
+        if target_sel != st.session_state["wong_target"]:
+          st.session_state["wong_target"] = target_sel
+          st.session_state["wong_stats"] = {"total": 0, "aciertos": 0}
+          st.session_state["wong_ensayo_activo"] = None
+          st.rerun()
+
+      with col_w2:
+        acc = (st.session_state["wong_stats"]["aciertos"] / st.session_state["wong_stats"]["total"] * 100) if st.session_state["wong_stats"]["total"] > 0 else 0.0
+        st.metric(
+            label="Precisión Acumulada (Umbral meta: ≥90%)",
+            value=f"{round(acc, 1)}%",
+            delta=f"{st.session_state['wong_stats']['aciertos']}/{st.session_state['wong_stats']['total']} ensayos"
+        )
+
+      st.write("")
+      col_p1, col_p2 = st.columns(2)
+      with col_p1:
+        if st.button("🔊 Lanzar nuevo ensayo", use_container_width=True):
+          # 50% de probabilidad de ser el Target, 50% distractor
+          es_target = random.choice([True, False])
+          if es_target:
+            nota_tocar = st.session_state["wong_target"]
+          else:
+            notas_distractoras = [n for n in NOTAS_BASE if n != st.session_state["wong_target"]]
+            nota_tocar = random.choice(notas_distractoras)
+          
+          freq = obtener_frecuencia(nota_tocar, octava=4)
+          st.session_state["wong_ensayo_activo"] = {
+              "nota": nota_tocar,
+              "es_target": es_target,
+              "timestamp": time.time(),
+              "freq": freq
+          }
+          reproducir_audio_sintetizado(freq, timbre="piano", duracion=1.0)
+          st.rerun()
+
+      if st.session_state["wong_ensayo_activo"]:
+        st.write("---")
+        st.write("⏱️ **Elige rápidamente antes de 2 segundos:**")
+        col_resp1, col_resp2 = st.columns(2)
+        
+        with col_resp1:
+          if st.button(f"🎯 Es {st.session_state['wong_target']}", use_container_width=True):
+            tiempo_reaccion = time.time() - st.session_state["wong_ensayo_activo"]["timestamp"]
+            es_target_real = st.session_state["wong_ensayo_activo"]["es_target"]
+            st.session_state["wong_stats"]["total"] += 1
+            
+            if tiempo_reaccion > 2.0:
+              st.error(f"⌛ ¡Demasiado lento! ({round(tiempo_reaccion, 2)}s). Límite de ventana absoluta superado.")
+            elif es_target_real:
+              st.session_state["wong_stats"]["aciertos"] += 1
+              st.success(f"✅ ¡Correcto! Tiempo: {round(tiempo_reaccion, 2)}s.")
+            else:
+              st.error(f"❌ Fallaste. Era {st.session_state['wong_ensayo_activo']['nota']}.")
+            st.session_state["wong_ensayo_activo"] = None
+
+        with col_resp2:
+          if st.button("🚫 Fuera de rango / Distractor", use_container_width=True):
+            tiempo_reaccion = time.time() - st.session_state["wong_ensayo_activo"]["timestamp"]
+            es_target_real = st.session_state["wong_ensayo_activo"]["es_target"]
+            st.session_state["wong_stats"]["total"] += 1
+            
+            if tiempo_reaccion > 2.0:
+              st.error(f"⌛ ¡Demasiado lento! ({round(tiempo_reaccion, 2)}s). Límite de ventana absoluta superado.")
+            elif not es_target_real:
+              st.session_state["wong_stats"]["aciertos"] += 1
+              st.success(f"✅ ¡Bien visto! Era {st.session_state['wong_ensayo_activo']['nota']} en {round(tiempo_reaccion, 2)}s.")
+            else:
+              st.error(f"❌ Incorrecto. Era exactamente la nota target ({st.session_state['wong_target']}).")
+            st.session_state["wong_ensayo_activo"] = None
+
+    # ================= EJERCICIO 2: DESACOPLO ESPECTRAL =================
     elif st.session_state["ejercicio_gym_activo"] == "espectral":
-      st.markdown("### 🎻 Desacoplo Espectral (Aislamiento de Altura)")
+      st.markdown("### 🎻 Desacoplo Espectral (Invarianza de Croma)")
       st.info(
-          "Uno de los fallos más habituales en adultos es memorizar cómo suena un Do en su propio piano y fallar en otros instrumentos:\n\n"
-          "* **Variedad tímbrica:** Realiza tests con muestras de al menos 4 timbres distintos (piano de cola, sintetizador onda senoidal pura, violín, voz humana) a lo largo de mínimo 3 octavas distintas.\n"
-          "* **Objetivo neurológico:** Esto obliga a la corteza auditiva a codificar la clase de altura (*pitch chroma*) y no solo el brillo o los armónicos secundarios de un instrumento concreto."
+          "Entrena la identificación de la clase de altura pura (*pitch chroma*) abstrayéndote de los timbres "
+          "y de la octava física (3, 4 o 5)."
       )
 
+      if "espectral_ensayo" not in st.session_state:
+        st.session_state["espectral_ensayo"] = None
+      if "espectral_stats" not in st.session_state:
+        st.session_state["espectral_stats"] = {"total": 0, "aciertos": 0}
+
+      col_es1, col_es2 = st.columns([1, 1])
+      with col_es1:
+        if st.button("🎲 Generar sonido aleatorio", use_container_width=True):
+          nota = random.choice(NOTAS_BASE)
+          octava = random.choice([3, 4, 5])
+          timbre = random.choice(["piano", "senoide", "violin", "voz"])
+          freq = obtener_frecuencia(nota, octava)
+          
+          st.session_state["espectral_ensayo"] = {
+              "nota": nota,
+              "octava": octava,
+              "timbre": timbre,
+              "freq": freq
+          }
+          reproducir_audio_sintetizado(freq, timbre=timbre, duracion=1.5)
+          st.rerun()
+
+      with col_es2:
+        acc_esp = (st.session_state["espectral_stats"]["aciertos"] / st.session_state["espectral_stats"]["total"] * 100) if st.session_state["espectral_stats"]["total"] > 0 else 0.0
+        st.metric("Aciertos globales", f"{round(acc_esp, 1)}%", f"{st.session_state['espectral_stats']['aciertos']}/{st.session_state['espectral_stats']['total']}")
+
+      if st.session_state["espectral_ensayo"]:
+        st.caption(f"Tímbre sintetizado: **{st.session_state['espectral_ensayo']['timbre'].capitalize()}** | Octava: **{st.session_state['espectral_ensayo']['octava']}**")
+        st.write("¿Qué nota ha sonado?")
+        
+        # Teclado en dos filas de 6 botones
+        cols_n1 = st.columns(6)
+        for i, n in enumerate(NOTAS_BASE[:6]):
+          with cols_n1[i]:
+            if st.button(n, key=f"btn_esp_{n}", use_container_width=True):
+              st.session_state["espectral_stats"]["total"] += 1
+              if n == st.session_state["espectral_ensayo"]["nota"]:
+                st.session_state["espectral_stats"]["aciertos"] += 1
+                st.success(f"🎉 ¡Exacto! Era {n}{st.session_state['espectral_ensayo']['octava']}.")
+              else:
+                st.error(f"❌ Fallo. La nota correcta era {st.session_state['espectral_ensayo']['nota']}{st.session_state['espectral_ensayo']['octava']}.")
+              st.session_state["espectral_ensayo"] = None
+
+        cols_n2 = st.columns(6)
+        for i, n in enumerate(NOTAS_BASE[6:]):
+          with cols_n2[i]:
+            if st.button(n, key=f"btn_esp_{n}", use_container_width=True):
+              st.session_state["espectral_stats"]["total"] += 1
+              if n == st.session_state["espectral_ensayo"]["nota"]:
+                st.session_state["espectral_stats"]["aciertos"] += 1
+                st.success(f"🎉 ¡Exacto! Era {n}{st.session_state['espectral_ensayo']['octava']}.")
+              else:
+                st.error(f"❌ Fallo. La nota correcta era {st.session_state['espectral_ensayo']['nota']}{st.session_state['espectral_ensayo']['octava']}.")
+              st.session_state["espectral_ensayo"] = None
+
+    # ================= EJERCICIO 3: MEMORIA DE TRABAJO AUDITIVA =================
     elif st.session_state["ejercicio_gym_activo"] == "memoria":
-      st.markdown("### ⚡ Entrenamiento de la Memoria de Trabajo Auditiva")
+      st.markdown("### ⚡ Entrenamiento de Memoria de Trabajo Auditiva")
       st.info(
-          "Las investigaciones de la Universidad de Chicago (Van Hedger et al., 2015, 2019) confirmaron que el factor predictor número uno para que un adulto desarrolle oído absoluto funcional es la capacidad de retener sonidos en la memoria operativa.\n\n"
-          "Dedicar sesiones breves a recordar secuencias de 3 a 5 alturas aisladas tras varios segundos de silencio amplifica drásticamente la consolidación neural."
+          "Protocolo de retención en memoria operativa (Van Hedger et al., 2015, 2019): "
+          "Escucha la secuencia, retenla en mente durante el silencio y reconstrúyela nota a nota."
       )
+
+      if "memoria_secuencia" not in st.session_state:
+        st.session_state["memoria_secuencia"] = []
+      if "memoria_usuario" not in st.session_state:
+        st.session_state["memoria_usuario"] = []
+
+      longitud_sec = st.slider("Longitud de la secuencia (alturas aisladas):", min_value=3, max_value=5, value=3)
+
+      col_m1, col_m2 = st.columns(2)
+      with col_m1:
+        if st.button("🎧 Generar y Escuchar Secuencia", use_container_width=True):
+          secuencia = [random.choice(NOTAS_BASE) for _ in range(longitud_sec)]
+          st.session_state["memoria_secuencia"] = secuencia
+          st.session_state["memoria_usuario"] = []
+          frecuencias = [obtener_frecuencia(n, octava=4) for n in secuencia]
+          reproducir_secuencia_sintetizada(frecuencias, timbre="piano", duracion_tono=0.7, silencio_inter=0.4)
+          st.rerun()
+
+      with col_m2:
+        if st.session_state["memoria_secuencia"]:
+          if st.button("🔁 Re-escuchar secuencia", use_container_width=True):
+            frecuencias = [obtener_frecuencia(n, octava=4) for n in st.session_state["memoria_secuencia"]]
+            reproducir_secuencia_sintetizada(frecuencias, timbre="piano", duracion=0.7, silencio_inter=0.4)
+
+      if st.session_state["memoria_secuencia"]:
+        st.write("---")
+        st.write(f"Tu secuencia introducida: **{' - '.join(st.session_state['memoria_usuario']) if st.session_state['memoria_usuario'] else '*(Vacía)*'}**")
+        
+        # Teclado de selección
+        cols_k1 = st.columns(6)
+        for i, n in enumerate(NOTAS_BASE[:6]):
+          with cols_k1[i]:
+            if st.button(n, key=f"mem_k_{n}", use_container_width=True):
+              if len(st.session_state["memoria_usuario"]) < len(st.session_state["memoria_secuencia"]):
+                st.session_state["memoria_usuario"].append(n)
+                reproducir_audio_sintetizado(obtener_frecuencia(n, 4), timbre="piano", duracion=0.5)
+                st.rerun()
+
+        cols_k2 = st.columns(6)
+        for i, n in enumerate(NOTAS_BASE[6:]):
+          with cols_k2[i]:
+            if st.button(n, key=f"mem_k_{n}", use_container_width=True):
+              if len(st.session_state["memoria_usuario"]) < len(st.session_state["memoria_secuencia"]):
+                st.session_state["memoria_usuario"].append(n)
+                reproducir_audio_sintetizado(obtener_frecuencia(n, 4), timbre="piano", duracion=0.5)
+                st.rerun()
+
+        st.write("")
+        col_ctrl1, col_ctrl2 = st.columns(2)
+        with col_ctrl1:
+          if st.button("🧹 Borrar última nota"):
+            if st.session_state["memoria_usuario"]:
+              st.session_state["memoria_usuario"].pop()
+              st.rerun()
+
+        with col_ctrl2:
+          if len(st.session_state["memoria_usuario"]) == len(st.session_state["memoria_secuencia"]):
+            if st.button("✅ Comprobar Secuencia", use_container_width=True):
+              if st.session_state["memoria_usuario"] == st.session_state["memoria_secuencia"]:
+                st.success(f"🏆 ¡Excelente consolidación! Secuencia correcta: {' - '.join(st.session_state['memoria_secuencia'])}")
+              else:
+                st.error(f"❌ Fallaste. La secuencia real era: {' - '.join(st.session_state['memoria_secuencia'])}")
+              st.session_state["memoria_secuencia"] = []
+              st.session_state["memoria_usuario"] = []
 
     st.write("---")
     if st.button("⬅️ Salir del Gimnasio y volver al Login"):
       st.session_state["vista_publica"] = "login"
       st.rerun()
 
-  # 3. PANTALLA DE LOGIN CONVENCIONAL (CON BOTÓN DE ACCESO AL ENTRENAMIENTO)
+  # 3. PANTALLA DE LOGIN CONVENCIONAL
   else:
     st.write("### 🔑 Identifícate para entrar a la mina 🔑")
     opciones_roles = ["Selecciona una opción", "Creador", "Minero Óscar", "Minero Pablo", "Administrador"]
@@ -433,7 +742,7 @@ if st.session_state["rol"] is None:
 
     st.write("---")
     st.markdown("#### 🎧 Módulo Abierto")
-    if st.button("Entrenamiento auditivo", help="Acceso directo al marco científico y gimnasio de oído absoluto"):
+    if st.button("Entrenamiento auditivo", help="Acceso directo al marco científico y gimnasio interactivo de oído absoluto"):
       st.session_state["vista_publica"] = "entrenamiento_intro"
       st.rerun()
 
