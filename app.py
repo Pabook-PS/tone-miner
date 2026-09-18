@@ -44,14 +44,12 @@ def generar_onda_nota(frecuencia, duracion, timbre="piano", sample_rate=22050):
 
   for i in range(num_samples):
     t = i / sample_rate
-    # Envolvente básica
     if t < 0.03:
       env = t / 0.03
     else:
       decay_factor = 2.5 if timbre == "piano" else 0.8
       env = math.exp(-decay_factor * (t - 0.03))
 
-    # Síntesis tímbrica con armónicos
     if timbre == "senoide":
       val = math.sin(2 * math.pi * frecuencia * t)
     elif timbre == "violin":
@@ -533,8 +531,8 @@ if st.session_state["rol"] is None:
       with col_w1:
         target_sel = st.selectbox(
             "Nota Target (Categoría):",
-            ["Do", "Fa", "Sol", "La"],
-            index=["Do", "Fa", "Sol", "La"].index(st.session_state["wong_target"]),
+            NOTAS_BASE,
+            index=NOTAS_BASE.index(st.session_state["wong_target"]),
             key="sel_wong_target"
         )
         if target_sel != st.session_state["wong_target"]:
@@ -636,13 +634,6 @@ if st.session_state["rol"] is None:
 
       if st.session_state["espectral_ensayo"]:
         st.caption(f"Timbre: **{st.session_state['espectral_ensayo']['timbre'].capitalize()}** | Octava: **{st.session_state['espectral_ensayo']['octava']}**")
-        if st.button("🔁 Re-escuchar sonido actual"):
-          reproducir_audio_sintetizado(
-              st.session_state["espectral_ensayo"]["freq"],
-              timbre=st.session_state["espectral_ensayo"]["timbre"],
-              duracion=1.3
-          )
-
         st.write("¿Qué nota ha sonado?")
         cols_n1 = st.columns(6)
         for i, n in enumerate(NOTAS_BASE[:6]):
@@ -678,7 +669,7 @@ if st.session_state["rol"] is None:
 
       longitud_sec = st.slider("Longitud de la secuencia:", min_value=3, max_value=5, value=3)
 
-      col_m1, col_m2 = st.columns(2)
+      col_m1, _ = st.columns(2)
       with col_m1:
         if st.button("🎧 Generar y Escuchar Secuencia", use_container_width=True):
           secuencia = [random.choice(NOTAS_BASE) for _ in range(longitud_sec)]
@@ -686,12 +677,6 @@ if st.session_state["rol"] is None:
           st.session_state["memoria_usuario"] = []
           frecuencias = [obtener_frecuencia(n, octava=4) for n in secuencia]
           reproducir_secuencia_sintetizada(frecuencias, timbre="piano", duracion=0.7, silencio_inter=0.3)
-
-      with col_m2:
-        if st.session_state["memoria_secuencia"]:
-          if st.button("🔁 Re-escuchar secuencia", use_container_width=True):
-            frecuencias = [obtener_frecuencia(n, octava=4) for n in st.session_state["memoria_secuencia"]]
-            reproducir_secuencia_sintetizada(frecuencias, timbre="piano", duracion=0.7, silencio_inter=0.3)
 
       if st.session_state["memoria_secuencia"]:
         st.write("---")
